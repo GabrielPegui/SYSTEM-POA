@@ -216,3 +216,30 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+*.ipr
+*.iws
+.idea/
+AndroidManifest.xml
+ios/Pods/
+ios/.symlinks/
+
+# Frontend analysis/build artifacts
+frontend/**/build/
+frontend/**/.dart_tool/
+
+# Local configuration
+*.local
+
+# IDE
+.vscode/
+

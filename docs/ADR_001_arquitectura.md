@@ -6,7 +6,7 @@ Aceptado
 
 ## Fecha
 
-[Completar fecha]
+[8-6-2026]
 
 ## Contexto
 
@@ -90,3 +90,94 @@ La base de datos estará alojada en infraestructura propia de la empresa.
 Se utilizará Clean Architecture.
 
 La separación interna del backend será:
+app/
+
+├── core/
+│
+├── api/
+│
+├── domain/
+│
+├── application/
+│
+├── infrastructure/
+│
+├── database/
+│
+└── tests/
+
+
+Responsabilidades:
+
+## Core
+
+Contiene configuraciones transversales:
+
+- Variables de ambiente.
+- Configuración del sistema.
+- Logging.
+- Seguridad.
+- Utilidades compartidas.
+
+
+## API
+
+Capa de presentación HTTP.
+
+Responsable de:
+
+- Endpoints.
+- Request schemas.
+- Response schemas.
+- Manejo HTTP.
+
+No contiene reglas de negocio.
+
+
+## Application
+
+Contiene:
+
+- Casos de uso.
+- Orquestación del flujo.
+- Servicios de aplicación.
+
+
+## Domain
+
+Contiene:
+
+- Entidades.
+- Value Objects.
+- Interfaces.
+- Reglas de negocio.
+
+No depende de ninguna capa externa.
+
+
+## Infrastructure
+
+Contiene implementaciones concretas:
+
+- Repositorios SQL Server.
+- Lectores PDF.
+- Servicios externos.
+
+
+## Database
+
+Contiene:
+
+- Configuración de conexión.
+- Migraciones.
+- Scripts versionados.
+
+# Principios arquitectónicos
+
+El sistema seguirá los siguientes principios:
+
+- Separación de responsabilidades.
+- Bajo acoplamiento.
+- Alta cohesión.
+- Dependencias dirigidas hacia el dominio.
+- Independencia entre frontend, backend y persistencia.
