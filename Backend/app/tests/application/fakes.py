@@ -7,11 +7,13 @@ They mirror the persistence behavior relevant to the use cases.
 
 from dataclasses import replace
 
+from app.domain.document_processing.history import ProcessingHistoryRecord
 from app.domain.entities import Customer, Order, Product, Route
 from app.domain.enums import OrderStatus
 from app.domain.interfaces.repositories import (
     CustomerRepository,
     OrderRepository,
+    ProcessingHistoryRepository,
     ProductRepository,
     RouteRepository,
 )
@@ -28,13 +30,23 @@ class InMemoryRouteRepository(RouteRepository):
 
 
 class InMemoryCustomerRepository(CustomerRepository):
-    """Customer repository backed by a code -> Customer dict."""
+    """Customer repository backed by a code -> Customer dict.
+
+    ``get_by_rnc`` mirrors the real data: an RNC maps to many accounts
+    (``docs/ANALISIS_DATOS_MVP.md``), so it returns a tuple of customers.
+    """
 
     def __init__(self, customers: list[Customer] | None = None) -> None:
         self._by_code = {c.code: c for c in (customers or [])}
 
     def get_by_code(self, code: str) -> Customer | None:
         return self._by_code.get(code)
+
+    def get_by_rnc(self, rnc: str) -> tuple[Customer, ...]:
+        return tuple(c for c in self._by_code.values() if c.rnc == rnc)
+
+    def list(self) -> list[Customer]:
+        return sorted(self._by_code.values(), key=lambda c: c.code)
 
 
 class InMemoryProductRepository(ProductRepository):
@@ -45,6 +57,9 @@ class InMemoryProductRepository(ProductRepository):
 
     def get_by_code(self, code: str) -> Product | None:
         return self._by_code.get(code)
+
+    def list(self) -> list[Product]:
+        return sorted(self._by_code.values(), key=lambda p: p.code)
 
 
 class InMemoryOrderRepository(OrderRepository):
@@ -102,3 +117,27 @@ class FailingOrderRepository(OrderRepository):
 
     def list(self) -> list[Order]:
         raise self._error
+
+
+class InMemoryProcessingHistoryRepository(ProcessingHistoryRepository):
+    """Processing history repository backed by an in-memory list.
+
+    Mirrors the persistence implementation: ``save`` assigns a surrogate id and
+    ``list`` returns the attempts newest first.
+    """
+
+    def __init__(self) -> None:
+        self._records: dict[int, ProcessingHistoryRecord] = {}
+        self._next_id = 1
+
+    def save(self, record: ProcessingHistoryRecord) -> ProcessingHistoryRecord:
+        if record.id is None:
+            record = replace(record, id=self._next_id)
+            self._next_id += 1
+        self._records[record.id] = record
+        return record
+
+    def list(self) -> list[ProcessingHistoryRecord]:
+        return [
+            self._records[record_id] for record_id in sorted(self._records, reverse=True)
+        ]

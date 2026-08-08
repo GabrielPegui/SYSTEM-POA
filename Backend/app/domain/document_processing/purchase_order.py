@@ -43,7 +43,10 @@ class PurchaseOrderItemDocument:
     - ``description``: the original product description as printed.
     - ``quantity``: requested quantity, always an integer (documented rule).
     - ``pdf_code`` / ``ean``: identifiers found in the document, kept as
-      traceability; they are not catalog keys.
+      traceability only; they are NOT catalog keys and must never be used to
+      select a catalog product (Pre-Sprint 8.1: matching is by description
+      per ADR-003). Whether ``pdf_code`` corresponds to the official BOLIN
+      catalog code is a pending business question (see the sprint report).
     - ``uom`` / ``units_per_pack``: presentation data from the document.
     - ``unit_price`` / ``total``: monetary values, always ``Decimal``.
     - ``line_number``: position of the line in the document, when available.

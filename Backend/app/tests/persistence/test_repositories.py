@@ -9,17 +9,22 @@ from dataclasses import replace
 import pytest
 from sqlalchemy import func, select
 
+from app.domain.document_processing.history import ProcessingHistoryRecord
+from app.domain.document_processing.processing import ProcessingStatus
 from app.domain.enums import OrderStatus
 from app.domain.exceptions import CatalogReferenceNotFoundError
 from app.infrastructure.persistence.models import (
     CustomerModel,
+    OrderItemModel,
     OrderModel,
+    ProcessingHistoryModel,
     ProductModel,
     RouteModel,
 )
 from app.infrastructure.repositories import (
     SqlAlchemyCustomerRepository,
     SqlAlchemyOrderRepository,
+    SqlAlchemyProcessingHistoryRepository,
     SqlAlchemyProductRepository,
     SqlAlchemyRouteRepository,
 )
@@ -96,6 +101,31 @@ def test_order_repository_save_requires_existing_references(session, order) -> N
     assert session.scalar(select(func.count()).select_from(OrderModel)) == 0
 
 
+def test_order_repository_save_rolls_back_on_db_error(session, order, seeded_catalog, monkeypatch) -> None:
+    """A DB failure during save must not leave partial rows and must leave the
+    session usable (rollback, not a poisoned transaction)."""
+    repo = SqlAlchemyOrderRepository(session)
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 0
+
+    def boom_commit(*_args, **_kwargs) -> None:
+        raise RuntimeError("simulated database failure")
+
+    monkeypatch.setattr(session, "commit", boom_commit)
+
+    with pytest.raises(RuntimeError):
+        repo.save(order)
+
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 0
+    assert session.scalar(select(func.count()).select_from(OrderItemModel)) == 0
+
+    monkeypatch.undo()
+    session.rollback()
+
+    saved = repo.save(order)
+    assert saved.id is not None
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 1
+
+
 def test_order_repository_save_reuses_existing_references(session, order, seeded_catalog) -> None:
     SqlAlchemyOrderRepository(session).save(order)
 
@@ -149,3 +179,90 @@ def test_order_repository_list_newest_first(session, order, seeded_catalog) -> N
 
 def test_order_repository_list_empty(session) -> None:
     assert SqlAlchemyOrderRepository(session).list() == []
+
+
+def _history_record(**overrides) -> ProcessingHistoryRecord:
+    fields = dict(
+        source_filename="4000326758.pdf",
+        status=ProcessingStatus.PROCESSED,
+        reasons=("ok",),
+        order_number="4000326758",
+        parser_id="mercadal_parser",
+        customer_code="CL000004-101",
+        customer_name="MERCADAL GUARICANO",
+        route_code="PPN006",
+        route_name="Ruta 6",
+        item_count=10,
+    )
+    fields.update(overrides)
+    return ProcessingHistoryRecord(**fields)
+
+
+def test_history_repository_save_roundtrip(session) -> None:
+    record = _history_record()
+
+    saved = SqlAlchemyProcessingHistoryRepository(session).save(record)
+
+    assert saved.id is not None
+    assert saved.source_filename == record.source_filename
+    assert saved.status is ProcessingStatus.PROCESSED
+    assert saved.reasons == record.reasons
+    assert saved.order_number == record.order_number
+    assert saved.parser_id == record.parser_id
+    assert saved.customer_code == record.customer_code
+    assert saved.customer_name == record.customer_name
+    assert saved.route_code == record.route_code
+    assert saved.route_name == record.route_name
+    assert saved.item_count == record.item_count
+    assert saved.processed_at is not None
+
+
+def test_history_repository_saves_non_processed_statuses(session) -> None:
+    repo = SqlAlchemyProcessingHistoryRepository(session)
+    statuses = [
+        ProcessingStatus.REVIEW_REQUIRED,
+        ProcessingStatus.NO_MATCH,
+        ProcessingStatus.ERROR,
+    ]
+
+    for status in statuses:
+        record = _history_record(status=status, order_number=None)
+        saved = repo.save(record)
+        assert saved.id is not None
+        assert saved.status is status
+
+    assert session.scalar(select(func.count()).select_from(ProcessingHistoryModel)) == 3
+
+
+def test_history_repository_list_newest_first(session) -> None:
+    repo = SqlAlchemyProcessingHistoryRepository(session)
+    first = repo.save(_history_record(source_filename="a.pdf"))
+    second = repo.save(_history_record(source_filename="b.pdf"))
+
+    result = repo.list()
+
+    assert len(result) == 2
+    assert result[0].id == second.id
+    assert result[1].id == first.id
+
+
+def test_history_repository_save_rolls_back_on_db_error(session, monkeypatch) -> None:
+    repo = SqlAlchemyProcessingHistoryRepository(session)
+    assert session.scalar(select(func.count()).select_from(ProcessingHistoryModel)) == 0
+
+    def boom_commit(*_args, **_kwargs) -> None:
+        raise RuntimeError("simulated database failure")
+
+    monkeypatch.setattr(session, "commit", boom_commit)
+
+    with pytest.raises(RuntimeError):
+        repo.save(_history_record())
+
+    assert session.scalar(select(func.count()).select_from(ProcessingHistoryModel)) == 0
+
+    monkeypatch.undo()
+    session.rollback()
+
+    saved = repo.save(_history_record())
+    assert saved.id is not None
+    assert session.scalar(select(func.count()).select_from(ProcessingHistoryModel)) == 1

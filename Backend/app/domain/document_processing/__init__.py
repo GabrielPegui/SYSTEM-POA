@@ -12,12 +12,21 @@ from app.domain.document_processing.exceptions import (
     PDFNoTextError,
     PDFReadError,
 )
-from app.domain.document_processing.matching import MatchOutcome, MatchResult
+from app.domain.document_processing.matching import (
+    CustomerMatchResult,
+    MatchOutcome,
+    MatchResult,
+)
 from app.domain.document_processing.models import (
     DetectionResult,
     PageData,
     RawDocumentData,
     TextElement,
+)
+from app.domain.document_processing.processing import (
+    ProcessedItemResult,
+    ProcessedOrderResult,
+    ProcessingStatus,
 )
 from app.domain.document_processing.purchase_order import (
     PurchaseOrderDocument,
@@ -25,6 +34,7 @@ from app.domain.document_processing.purchase_order import (
 )
 
 __all__ = [
+    "CustomerMatchResult",
     "DetectionResult",
     "DocumentProcessingError",
     "DocumentType",
@@ -34,6 +44,9 @@ __all__ = [
     "PDFNoTextError",
     "PDFReadError",
     "PageData",
+    "ProcessedItemResult",
+    "ProcessedOrderResult",
+    "ProcessingStatus",
     "PurchaseOrderDocument",
     "PurchaseOrderItemDocument",
     "RawDocumentData",

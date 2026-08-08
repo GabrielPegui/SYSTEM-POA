@@ -3,6 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,11 +24,13 @@ class Settings(BaseSettings):
     app_name: str = "Purchase Order Automation API"
     app_version: str = "0.1.0"
     environment: Literal["development", "staging", "production"] = "development"
-    debug: bool = False
+    #: Namespaced to avoid collisions with the generic ``DEBUG`` variable that
+    #: external tooling (e.g. Node's debug package, CI systems) sets in the host.
+    debug: bool = Field(default=False, validation_alias="APP_DEBUG")
     log_level: str = "INFO"
 
-    api_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["*"]
+    #: Maximum accepted size (in megabytes) for an uploaded PDF document.
+    max_upload_mb: int = 20
 
     database_url: str = ""
 

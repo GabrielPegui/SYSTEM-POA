@@ -15,19 +15,23 @@ customer or product is missing, ``CatalogReferenceNotFoundError`` is raised.
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.domain.document_processing.history import ProcessingHistoryRecord
 from app.domain.entities import Customer, Order, Product, Route
 from app.domain.enums import OrderStatus
 from app.domain.exceptions import CatalogReferenceNotFoundError
 from app.domain.interfaces.repositories import (
     CustomerRepository,
     OrderRepository,
+    ProcessingHistoryRepository,
     ProductRepository,
     RouteRepository,
 )
 from app.infrastructure.persistence.mappers import (
     customer_to_domain,
+    domain_to_history_model,
     domain_to_item_model,
     order_to_domain,
+    processing_history_to_domain,
     product_to_domain,
     route_to_domain,
 )
@@ -35,6 +39,7 @@ from app.infrastructure.persistence.models import (
     CustomerModel,
     OrderItemModel,
     OrderModel,
+    ProcessingHistoryModel,
     ProductModel,
     RouteModel,
 )
@@ -74,6 +79,23 @@ class SqlAlchemyCustomerRepository(CustomerRepository):
         ).first()
         return customer_to_domain(model) if model is not None else None
 
+    def get_by_rnc(self, rnc: str) -> tuple[Customer, ...]:
+        models = self._session.scalars(
+            select(CustomerModel)
+            .options(selectinload(CustomerModel.route))
+            .where(CustomerModel.rnc == rnc)
+            .order_by(CustomerModel.code)
+        ).all()
+        return tuple(customer_to_domain(model) for model in models)
+
+    def list(self) -> list[Customer]:
+        models = self._session.scalars(
+            select(CustomerModel)
+            .options(selectinload(CustomerModel.route))
+            .order_by(CustomerModel.code)
+        ).all()
+        return [customer_to_domain(model) for model in models]
+
 
 class SqlAlchemyProductRepository(ProductRepository):
     """SQLAlchemy implementation of the product repository."""
@@ -86,6 +108,12 @@ class SqlAlchemyProductRepository(ProductRepository):
             select(ProductModel).where(ProductModel.code == code)
         ).first()
         return product_to_domain(model) if model is not None else None
+
+    def list(self) -> list[Product]:
+        models = self._session.scalars(
+            select(ProductModel).order_by(ProductModel.code)
+        ).all()
+        return [product_to_domain(model) for model in models]
 
 
 class SqlAlchemyOrderRepository(OrderRepository):
@@ -115,8 +143,12 @@ class SqlAlchemyOrderRepository(OrderRepository):
             order_model.items.append(domain_to_item_model(product_model, item))
 
         self._session.add(order_model)
-        self._session.flush()
-        self._session.commit()
+        try:
+            self._session.flush()
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
 
         persisted = self._session.scalars(
             select(OrderModel)
@@ -140,8 +172,12 @@ class SqlAlchemyOrderRepository(OrderRepository):
         if model is None:
             raise RuntimeError(f"Order with id {order_id} was not found")
         model.status = status.value
-        self._session.flush()
-        self._session.commit()
+        try:
+            self._session.flush()
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
         persisted = self._session.scalars(
             select(OrderModel)
             .options(*_order_load_options())
@@ -180,3 +216,35 @@ class SqlAlchemyOrderRepository(OrderRepository):
         if model is None:
             raise CatalogReferenceNotFoundError("Product", code)
         return model
+
+
+class SqlAlchemyProcessingHistoryRepository(ProcessingHistoryRepository):
+    """SQLAlchemy implementation of the processing history repository.
+
+    ``save`` persists a single attempt. Like ``OrderRepository.save``, a
+    flush/commit failure rolls back so the session is never left poisoned.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save(self, record: ProcessingHistoryRecord) -> ProcessingHistoryRecord:
+        model = domain_to_history_model(record)
+        self._session.add(model)
+        try:
+            self._session.flush()
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
+        return processing_history_to_domain(
+            self._session.scalars(
+                select(ProcessingHistoryModel).where(ProcessingHistoryModel.id == model.id)
+            ).one()
+        )
+
+    def list(self) -> list[ProcessingHistoryRecord]:
+        models = self._session.scalars(
+            select(ProcessingHistoryModel).order_by(ProcessingHistoryModel.id.desc())
+        ).all()
+        return [processing_history_to_domain(model) for model in models]

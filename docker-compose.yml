@@ -28,7 +28,7 @@ services:
     container_name: poa-backend
     environment:
       ENVIRONMENT: development
-      DEBUG: "true"
+      APP_DEBUG: "true"
       DATABASE_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD}@mssql:1433/purchase_order?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=no
     ports:
       - "${BACKEND_PORT:-8000}:8000"

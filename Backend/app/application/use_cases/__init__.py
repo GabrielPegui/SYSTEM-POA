@@ -11,6 +11,13 @@ and in the Sprint 3 report.
 from app.application.use_cases.create_order import CreateOrder
 from app.application.use_cases.get_order import GetOrder
 from app.application.use_cases.list_orders import ListOrders
+from app.application.use_cases.process_purchase_order import ProcessPurchaseOrder
 from app.application.use_cases.validate_order import ValidateOrder
 
-__all__ = ["CreateOrder", "GetOrder", "ListOrders", "ValidateOrder"]
+__all__ = [
+    "CreateOrder",
+    "GetOrder",
+    "ListOrders",
+    "ProcessPurchaseOrder",
+    "ValidateOrder",
+]

@@ -11,7 +11,7 @@ cases), not the surrogate ``id``. The surrogate ``id`` is still returned in
 responses for reference.
 """
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,3 +55,56 @@ class OrderResponse(BaseModel):
     delivery_date: date
     status: OrderStatus
     items: list[OrderItemResponse]
+
+
+class ProcessedItemCandidateResponse(BaseModel):
+    """A catalog product offered as a candidate for review."""
+
+    code: str
+    description: str
+
+
+class ProcessedItemResponse(BaseModel):
+    """A single extracted line plus its matching evidence."""
+
+    description: str
+    quantity: int
+    pdf_code: str | None = None
+    match_status: str
+    product_code: str | None = None
+    product_description: str | None = None
+    confidence: float | None = None
+    candidates: list[ProcessedItemCandidateResponse] = []
+    reason: str = ""
+
+
+class ProcessedCustomerCandidateResponse(BaseModel):
+    """A catalog account offered as a candidate for review."""
+
+    code: str
+    name: str
+    route_code: str
+
+
+class ProcessOrderResponse(BaseModel):
+    """Outcome of processing a purchase order PDF.
+
+    ``status`` is one of ``processed`` / ``review_required`` / ``no_match`` /
+    ``error``. ``items`` always carries per-line matching evidence so the
+    frontend can show which lines need human review.
+    """
+
+    source_filename: str
+    parser_id: str
+    document_type: str
+    status: str
+    processed_at: datetime
+    order_number: str | None = None
+    delivery_date: date | None = None
+    customer_code: str | None = None
+    customer_name: str | None = None
+    customer_candidates: list[ProcessedCustomerCandidateResponse] = []
+    route_code: str | None = None
+    route_reason: str = ""
+    reasons: list[str] = []
+    items: list[ProcessedItemResponse] = []

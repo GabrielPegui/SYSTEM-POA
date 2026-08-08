@@ -3,6 +3,7 @@
 from app.infrastructure.repositories.sqlalchemy_repositories import (
     SqlAlchemyCustomerRepository,
     SqlAlchemyOrderRepository,
+    SqlAlchemyProcessingHistoryRepository,
     SqlAlchemyProductRepository,
     SqlAlchemyRouteRepository,
 )
@@ -10,6 +11,7 @@ from app.infrastructure.repositories.sqlalchemy_repositories import (
 __all__ = [
     "SqlAlchemyCustomerRepository",
     "SqlAlchemyOrderRepository",
+    "SqlAlchemyProcessingHistoryRepository",
     "SqlAlchemyProductRepository",
     "SqlAlchemyRouteRepository",
 ]

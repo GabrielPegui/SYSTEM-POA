@@ -23,8 +23,12 @@ class PDFReader(ABC):
     """Contract to read raw content from a PDF file."""
 
     @abstractmethod
-    def read(self, path: Path) -> RawDocumentData:
+    def read(self, path: Path, filename: str | None = None) -> RawDocumentData:
         """Read a PDF and return its raw document data.
+
+        ``filename`` is the traceability name to attach to the result; when
+        omitted it defaults to ``path.name``. Detection and parsing never
+        depend on it (ADR-002: the detector works on document content only).
 
         Raises:
             PDFReadError: if the file is missing or not a valid PDF.
@@ -35,7 +39,7 @@ class PDFReader(ABC):
 class PdfplumberPDFReader(PDFReader):
     """PDFReader implementation backed by pdfplumber."""
 
-    def read(self, path: Path) -> RawDocumentData:
+    def read(self, path: Path, filename: str | None = None) -> RawDocumentData:
         path = Path(path)
         if not path.exists():
             raise PDFReadError(f"PDF file not found: {path}")
@@ -53,7 +57,7 @@ class PdfplumberPDFReader(PDFReader):
         if not any(page.text.strip() for page in pages):
             raise PDFNoTextError(f"PDF has no extractable text: {path}")
 
-        return RawDocumentData(filename=path.name, pages=pages, producer=producer)
+        return RawDocumentData(filename=filename or path.name, pages=pages, producer=producer)
 
     def _read_page(self, page, page_number: int) -> PageData:
         text = page.extract_text() or ""

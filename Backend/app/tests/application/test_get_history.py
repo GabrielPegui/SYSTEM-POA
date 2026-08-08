@@ -1,24 +1,25 @@
 """GetHistory use case - decision documentation.
 
-``ProcessingHistory`` persistence does not exist yet: it was deliberately
-excluded from the Database Foundation (Sprint 2) and belongs to the
-PDF-processing pipeline sprint. Therefore ``GetHistory`` cannot be implemented
-correctly in Sprint 3 without inventing infrastructure that is out of scope.
+``ProcessingHistory`` persistence now exists (Pre-Sprint 8.1, Objective B):
+every processing attempt is recorded as a ``ProcessingHistoryRecord`` (ADR-003
+audit/traceability) in the ``processing_history`` table via the
+``ProcessingHistoryRepository`` contract.
 
-Following the sprint rules, no placeholder and no parallel history
-infrastructure is created here. These tests document that decision instead of
-faking an implementation.
+``GetHistory`` (the read side / API endpoint for the frontend) is still not
+exposed: Pre-Sprint 8.1 only implements the persistence write path inside
+``ProcessPurchaseOrder``. Exposing history retrieval is a separate concern
+(contract, pagination, presentation) and is deliberately left for a follow-up.
 """
 
 from app.application import use_cases
 from app.domain.interfaces import repositories
 
 
-def test_get_history_is_deferred_until_history_persistence_exists() -> None:
-    """History persistence is not part of the current architecture."""
-    assert not hasattr(repositories, "ProcessingHistoryRepository")
+def test_processing_history_repository_is_available() -> None:
+    """History persistence exists and is exposed through the domain contract."""
+    assert hasattr(repositories, "ProcessingHistoryRepository")
 
 
 def test_get_history_use_case_is_not_exposed_yet() -> None:
-    """The application layer does not expose a GetHistory use case."""
+    """The application layer does not expose a GetHistory use case yet."""
     assert not hasattr(use_cases, "GetHistory")

@@ -16,12 +16,28 @@ def _table(name):
 
 def test_all_expected_tables_are_registered() -> None:
     tables = set(Base.metadata.tables)
-    assert {"routes", "customers", "products", "product_route", "orders", "order_items"} <= tables
+    assert {
+        "routes",
+        "customers",
+        "products",
+        "product_route",
+        "orders",
+        "order_items",
+        "processing_history",
+    } <= tables
 
 
 def test_schema_is_created_in_sqlite(engine) -> None:
     table_names = set(inspect(engine).get_table_names())
-    assert {"routes", "customers", "products", "product_route", "orders", "order_items"} <= table_names
+    assert {
+        "routes",
+        "customers",
+        "products",
+        "product_route",
+        "orders",
+        "order_items",
+        "processing_history",
+    } <= table_names
 
 
 def test_routes_schema() -> None:
@@ -89,7 +105,21 @@ def test_order_items_schema_and_quantity_rule() -> None:
 
 
 def test_audit_timestamps_present() -> None:
-    for name in ("routes", "customers", "products", "orders"):
+    for name in ("routes", "customers", "products", "orders", "processing_history"):
         assert "created_at" in _table(name).columns
         assert "updated_at" in _table(name).columns
+
+
+def test_processing_history_schema() -> None:
+    table = _table("processing_history")
+    assert not table.c.source_filename.nullable
+    assert not table.c.source_filename.index
+    assert table.c.status.index
+    assert table.c.order_number.nullable
+    assert table.c.parser_id.nullable
+    assert table.c.customer_code.nullable
+    assert table.c.route_code.nullable
+    assert table.c.reasons.nullable is False
+    assert isinstance(table.c.item_count.type, Integer)
+    assert isinstance(table.c.processed_at.type, DateTime)
 

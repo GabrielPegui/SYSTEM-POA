@@ -13,11 +13,17 @@ class Customer:
 
     ``code`` is the business identifier found in the source data (e.g.
     ``CL000168``). Each customer belongs to exactly one route.
+
+    ``rnc`` is the tax identifier present in the source data (``OUT_CLIENTES``
+    column 2) and in the database schema. It is not a unique key: a single RNC
+    maps to many accounts (``docs/ANALISIS_DATOS_MVP.md``), which is why it is
+    only used as reinforcement by the customer matcher.
     """
 
     code: str
     name: str
     route: Route
+    rnc: str | None = None
     id: int | None = None
 
     def __post_init__(self) -> None:

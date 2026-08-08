@@ -17,7 +17,7 @@ product when the evidence is not conclusive.
 import enum
 from dataclasses import dataclass
 
-from app.domain.entities import Product
+from app.domain.entities import Customer, Product
 
 
 class MatchOutcome(enum.Enum):
@@ -50,3 +50,27 @@ class MatchResult:
             raise ValueError("MATCHED requires a matched product")
         if self.outcome is not MatchOutcome.MATCHED and self.matched_product is not None:
             raise ValueError("Only MATCHED results may carry a matched product")
+
+
+@dataclass(frozen=True)
+class CustomerMatchResult:
+    """Outcome of matching a customer extracted from a document.
+
+    - ``outcome``: the matching state.
+    - ``matched_customer``: the catalog customer selected, when MATCHED.
+    - ``confidence``: numeric confidence in ``[0, 1]``, when available.
+    - ``candidates``: customers that could correspond, when not conclusive.
+    - ``reason``: human-readable evidence for the decision.
+    """
+
+    outcome: MatchOutcome
+    matched_customer: Customer | None = None
+    confidence: float | None = None
+    candidates: tuple[Customer, ...] = ()
+    reason: str = ""
+
+    def __post_init__(self) -> None:
+        if self.outcome is MatchOutcome.MATCHED and self.matched_customer is None:
+            raise ValueError("MATCHED requires a matched customer")
+        if self.outcome is not MatchOutcome.MATCHED and self.matched_customer is not None:
+            raise ValueError("Only MATCHED results may carry a matched customer")

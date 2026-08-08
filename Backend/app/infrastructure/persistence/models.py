@@ -35,6 +35,7 @@ Schema notes (Sprint 2 - Database Foundation):
 from datetime import UTC, date, datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
@@ -182,3 +183,34 @@ class OrderItemModel(Base):
 
     order: Mapped["OrderModel"] = relationship(back_populates="items")
     product: Mapped["ProductModel"] = relationship()
+
+
+class ProcessingHistoryModel(Base):
+    """Audit record of one purchase order processing attempt (Pre-Sprint 8.1).
+
+    Mirrors ``ProcessingHistoryRecord`` (ADR-003 audit/traceability). Only a
+    PROCESSED attempt also creates an ``Order``; the other outcomes exist only
+    here. ``reasons`` is stored as JSON (compiles to NVARCHAR(max) on SQL
+    Server). No document content is stored.
+    """
+
+    __tablename__ = "processing_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_filename: Mapped[str] = mapped_column(Unicode(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    reasons: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    order_number: Mapped[str | None] = mapped_column(String(64), index=True)
+    parser_id: Mapped[str | None] = mapped_column(String(64))
+    customer_code: Mapped[str | None] = mapped_column(String(32), index=True)
+    customer_name: Mapped[str | None] = mapped_column(Unicode(255))
+    route_code: Mapped[str | None] = mapped_column(String(20), index=True)
+    route_name: Mapped[str | None] = mapped_column(Unicode(255))
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
