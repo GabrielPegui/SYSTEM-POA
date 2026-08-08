@@ -1,5 +1,23 @@
 """Domain interfaces (abstract contracts implemented by infrastructure).
 
-The PDF parser strategy (ADR-002) will be defined here as an interface,
-e.g. ``IPDFParser``, when document processing is implemented.
+Includes repository contracts (ADR-001, ADR-003) and the PDF parser strategy
+(ADR-002).
 """
+
+from app.domain.interfaces.matching import ProductMatcher
+from app.domain.interfaces.pdf_parsers import IPDFParser
+from app.domain.interfaces.repositories import (
+    CustomerRepository,
+    OrderRepository,
+    ProductRepository,
+    RouteRepository,
+)
+
+__all__ = [
+    "CustomerRepository",
+    "IPDFParser",
+    "OrderRepository",
+    "ProductMatcher",
+    "ProductRepository",
+    "RouteRepository",
+]

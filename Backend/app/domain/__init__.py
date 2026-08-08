@@ -1,5 +1,5 @@
-"""Domain layer: entities, value objects and business interfaces.
+"""Domain layer: entities, value objects, business rules and interfaces.
 
-This layer is intentionally empty at scaffolding time. It must remain free
-of dependencies on infrastructure, frameworks or the database.
+The domain is independent of SQLAlchemy, FastAPI and any infrastructure
+detail (ADR-001). Dependencies point towards this layer.
 """

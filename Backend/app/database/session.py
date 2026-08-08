@@ -2,7 +2,9 @@
 
 The engine is created lazily so the application can start even when the
 database is not configured or unavailable (e.g. local development without
-SQL Server). No models or migrations are defined yet (see ADR-003).
+SQL Server). The schema is defined by the SQLAlchemy models in
+``app.infrastructure.persistence.models`` and applied through the versioned
+migrations under ``app/database/migrations`` (see ADR-003).
 """
 
 from typing import Any

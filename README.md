@@ -35,9 +35,14 @@ docker-compose.yml      # Ambiente de desarrollo (SQL Server + backend)
 ## Inicio rápido (desarrollo)
 
 1. Copiar `.env.example` a `.env` y ajustar credenciales.
-2. Levantar infraestructura: `docker compose up --build`.
-3. Backend disponible en `http://localhost:8000` (docs en `/docs`, health en `/health`).
-4. Frontend: `cd Frontend && flutter run -d windows`.
+2. Levantar infraestructura: `docker compose up -d mssql`.
+3. Crear la base y aplicar migraciones (desde `Backend/`):
+   ```
+   python -m app.database.create_database
+   alembic upgrade head
+   ```
+4. Backend disponible en `http://localhost:8000` (docs en `/docs`, health en `/health`).
+5. Frontend: `cd Frontend && flutter run -d windows`.
 
 ## Documentación de referencia
 

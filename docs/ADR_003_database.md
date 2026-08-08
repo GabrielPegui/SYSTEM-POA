@@ -148,9 +148,17 @@ Campos esperados:
 
 - Id.
 - Código.
-- EAN.
+- EAN (opcional/nullable).
 - Descripción.
 - Estado.
+
+Nota sobre EAN:
+
+- El catálogo actual disponible no contiene EAN de forma utilizable para el matching.
+- Para el MVP, el matching PDF → catálogo se realizará principalmente mediante **descripción**, utilizando las estrategias definidas en la arquitectura.
+- El código/EAN encontrado dentro del PDF puede conservarse como dato de **trazabilidad** cuando corresponda.
+- **EAN NO es un requisito obligatorio** del esquema ni del matching.
+- Si Grupo Bolín proporciona posteriormente un catálogo completo con EAN confiable, podrá utilizarse para mejorar el matching.
 
 ---
 
@@ -225,6 +233,22 @@ Frontend
 
 
 Esto evita acoplamiento entre base de datos y aplicación.
+
+---
+
+# Regla de persistencia de catálogo
+
+La persistencia de una orden **nunca crea implícitamente** entidades de catálogo (ruta, cliente, producto).
+
+El flujo correcto es:
+
+1. Extracción del documento (parser → `PurchaseOrderDocument`).
+2. Matching contra el catálogo (`ProductMatcher` → `MatchResult`).
+3. Revisión humana cuando sea necesario (`REVIEW_REQUIRED`).
+4. Construcción de la entidad de dominio con referencias resueltas.
+5. Persistencia.
+
+Si una orden referencia una ruta, cliente o producto que no existe en el catálogo, la persistencia falla (no se crea la entidad ausente). Las entidades de catálogo se incorporan por importación/mantenimiento, no como efecto secundario de guardar una orden.
 
 ---
 

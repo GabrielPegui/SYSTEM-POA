@@ -4,7 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.errors import register_exception_handlers
 from app.api.routes.health import router as health_router
+from app.api.routes.orders import router as orders_router
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -33,7 +35,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    register_exception_handlers(application)
     application.include_router(health_router, tags=["health"])
+    application.include_router(orders_router, tags=["orders"])
     return application
 
 

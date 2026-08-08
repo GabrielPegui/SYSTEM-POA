@@ -31,7 +31,16 @@ La estructura del documento puede variar dependiendo del cliente:
 - Documentos con múltiples páginas.
 - Productos distribuidos en varias líneas.
 
-Actualmente se identificaron aproximadamente 9 tipos diferentes de formatos PDF.
+En el corpus actual de análisis se dispone de 9 PDFs de muestra:
+
+- 7 contienen texto extraíble.
+- 2 son PDFs escaneados/sin texto.
+
+Los 7 PDFs legibles representan aproximadamente 5–6 estructuras documentales principales, que sirven como base para el MVP y el desarrollo inicial de parsers.
+
+Esto no significa que en el futuro solo existan 5–6 formatos posibles. Nuevos clientes o variaciones pueden requerir estructuras adicionales; cada formato real se incorporará como un parser propio cuando aparezca.
+
+No se debe crear artificialmente un parser por cada PDF del corpus; los parsers del MVP cubrirán las estructuras principales identificadas.
 
 Cada cliente puede mantener una estructura propia aunque pertenezca al mismo flujo operativo del negocio.
 
@@ -221,32 +230,54 @@ Los parsers no deben contener reglas de negocio.
 
 Sin importar el formato recibido, todos los parsers deben entregar una estructura común.
 
-Ejemplo:
+El modelo concreto es `PurchaseOrderDocument` (ver `backend/app/domain/document_processing/purchase_order.py`), que representa el resultado normalizado de extracción:
 
-
-OrderDTO
-
-{
-orderNumber,
-customer,
-deliveryDate,
-items[]
+```text
+PurchaseOrderDocument {
+  orderNumber,
+  customerCode?,
+  customerName?,
+  routeCode?,
+  orderDate?,
+  deliveryDate?,
+  items[]
 }
+```
 
+Cada línea:
 
-Detalle:
-
-
-OrderItemDTO
-
-{
-productCode,
-description,
-quantity
+```text
+PurchaseOrderItemDocument {
+  description,
+  quantity (int),
+  pdfCode?,
+  ean?,
+  uom?,
+  unitPrice (Decimal)?,
+  total (Decimal)?,
+  unitsPerPack?,
+  lineNumber?
 }
+```
 
+Reglas del modelo estándar:
+
+- `quantity` es siempre un entero (`int`); los valores monetarios (`unit_price`, `total`) son siempre `Decimal`.
+- Los campos opcionales (`?`) se llenan únicamente si la información existe en el PDF.
+- `pdf_code` / `ean` son identificadores extraídos del documento y quedan como trazabilidad; **no** son claves del catálogo.
+- El parser extrae; **no** realiza matching contra la base de datos, **no** decide qué `Product` del catálogo corresponde y **nunca** crea entidades.
 
 Esto permite que el resto del sistema sea independiente del formato original del documento.
+
+## Matching como paso separado (pre-Sprint 7)
+
+La correspondencia entre una línea extraída y el catálogo es responsabilidad de un `ProductMatcher` (ver `backend/app/domain/interfaces/matching.py`), no del parser. El resultado es `MatchResult` y expresa tres estados:
+
+- `MATCHED`: evidencia suficiente para elegir un producto del catálogo.
+- `REVIEW_REQUIRED`: hay candidatos pero la confianza no es suficiente; requiere revisión humana.
+- `NO_MATCH`: no se encontró candidato.
+
+Regla de seguridad: **nunca** crear silenciosamente un producto/cliente/ruta porque el matching no fue concluyente. Un match dudoso termina en `REVIEW_REQUIRED`; la persistencia solo ocurre después de resolver correctamente la correspondencia.
 
 ---
 
@@ -285,6 +316,32 @@ deliveryDate
 
 
 El sistema trabajará internamente con nombres y estructuras estándar.
+
+---
+
+# Regla fundamental de interpretación de datos
+
+El parser debe identificar primero el **campo/columna y su significado**, y posteriormente interpretar el **valor**. Nunca debe inferir el significado de un número únicamente por su apariencia, formato decimal o proximidad a una unidad de medida.
+
+Ejemplo conceptual:
+
+```text
+Cantidad = 20
+UOM = PAQ
+Precio/U = 192.50
+Total = 3,850.00
+```
+
+En este caso:
+
+- `20` = cantidad solicitada.
+- `PAQ` = unidad de medida.
+- `192.50` = precio unitario.
+- `3,850.00` = total.
+
+El hecho de que `192.50` sea decimal **no significa que sea una cantidad fraccionaria**. La decisión del tipo de campo (entero o decimal) depende del significado del campo, no de cómo aparece el valor en el documento.
+
+Esta es una regla de diseño del parser: evita errores futuros en parsers nuevos y debe aplicarse en todas las implementaciones.
 
 ---
 
@@ -401,7 +458,10 @@ Esta complejidad es aceptable debido a la variabilidad documental identificada.
 A partir de esta decisión:
 
 - Los parsers no contienen reglas comerciales.
-- Todos los parsers deben devolver modelos estándar.
+- Todos los parsers deben devolver `PurchaseOrderDocument` (modelo estándar).
+- Los parsers no realizan matching ni crean entidades del catálogo.
+- La correspondencia con el catálogo es responsabilidad del `ProductMatcher` (`MatchResult`: MATCHED / REVIEW_REQUIRED / NO_MATCH).
+- Nunca crear silenciosamente un producto/cliente/ruta cuando el matching no es concluyente; un match dudoso termina en `REVIEW_REQUIRED`.
 - Nuevos formatos deben agregarse como nuevos parsers.
 - No modificar parsers existentes para resolver formatos completamente diferentes.
 - Toda nueva estrategia de lectura debe validarse antes de implementarse.
