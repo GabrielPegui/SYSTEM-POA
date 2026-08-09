@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     #: Maximum accepted size (in megabytes) for an uploaded PDF document.
     max_upload_mb: int = 20
 
-    database_url: str = ""
+    database_url: str = Field(default="sqlite:///./poa_dev.db", validation_alias="DATABASE_URL")
 
 
 @lru_cache
