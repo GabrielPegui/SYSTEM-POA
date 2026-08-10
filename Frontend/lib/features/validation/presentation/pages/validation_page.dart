@@ -66,15 +66,15 @@ class ValidationPage extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: SectionHeader(
               title: 'Órdenes pendientes',
-              subtitle: 'Selecciona un documento para revisar las razones y el detalle.',
+              subtitle: 'Selecciona una orden para revisar su información.',
             ),
           ),
           const SizedBox(height: 12),
           Expanded(
             child: state.reviewQueue.isEmpty
                 ? const EmptyStatePanel(
-                    title: 'No hay órdenes en revisión',
-                    message: 'Cuando un PDF no tenga coincidencia suficiente, aparecerá aquí con su motivo.',
+                    title: 'No hay órdenes pendientes',
+                    message: 'Las órdenes que requieran tu intervención aparecerán aquí después del procesamiento.',
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(20),
@@ -153,17 +153,135 @@ class ValidationPage extends StatelessWidget {
   }
 }
 
-class _DocumentDetail extends StatelessWidget {
+class _DocumentDetail extends StatefulWidget {
   const _DocumentDetail({required this.document});
 
   final ProcessedDocumentView? document;
+
+  @override
+  State<_DocumentDetail> createState() => _DocumentDetailState();
+}
+
+class _DocumentDetailState extends State<_DocumentDetail> {
+  late TextEditingController _customerController;
+  late TextEditingController _routeController;
+  late List<TextEditingController> _quantityControllers;
+  DateTime? _deliveryDate;
+  bool _saving = false;
+
+  ProcessedDocumentView? get document => widget.document;
+
+  bool get _isEditable {
+    final doc = document;
+    return doc != null && doc.status != OrderProcessingStatus.processed;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncControllers();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DocumentDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.document != widget.document) {
+      _disposeControllers();
+      _syncControllers();
+    }
+  }
+
+  void _syncControllers() {
+    final doc = document;
+    _customerController = TextEditingController(
+      text: doc?.customerName ?? doc?.customerCode ?? '',
+    );
+    _routeController = TextEditingController(text: doc?.routeCode ?? '');
+    _quantityControllers = [
+      for (final item in doc?.items ?? const <OrderLineView>[])
+        TextEditingController(text: item.quantity.toString()),
+    ];
+    _deliveryDate = doc?.deliveryDate;
+  }
+
+  void _disposeControllers() {
+    _customerController.dispose();
+    _routeController.dispose();
+    for (final controller in _quantityControllers) {
+      controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposeControllers();
+    super.dispose();
+  }
+
+  Future<void> _saveCorrection() async {
+    final doc = document;
+    if (doc == null) {
+      return;
+    }
+    setState(() => _saving = true);
+
+    final correctedItems = <OrderLineView>[];
+    for (var index = 0; index < doc.items.length; index++) {
+      final item = doc.items[index];
+      final parsedQuantity = int.tryParse(_quantityControllers[index].text.trim());
+      correctedItems.add(
+        OrderLineView(
+          description: item.description,
+          quantity: parsedQuantity == null || parsedQuantity < 0 ? item.quantity : parsedQuantity,
+          matchStatus: item.matchStatus,
+          productCode: item.productCode,
+          productDescription: item.productDescription,
+          pdfCode: item.pdfCode,
+          confidence: item.confidence,
+          reason: item.reason,
+          candidates: item.candidates,
+        ),
+      );
+    }
+
+    await context.read<AppState>().applyCorrection(
+          doc,
+          customerName: _customerController.text,
+          routeCode: _routeController.text,
+          deliveryDate: _deliveryDate,
+          correctedItems: correctedItems,
+        );
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Corrección guardada. La orden pasó a procesada en esta sesión.'),
+      ),
+    );
+  }
+
+  Future<void> _pickDeliveryDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _deliveryDate ?? now,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 730)),
+    );
+    if (picked != null && mounted) {
+      setState(() => _deliveryDate = picked);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     if (document == null) {
       return const EmptyStatePanel(
         title: 'Sin documento seleccionado',
-        message: 'Elige una orden para ver el motivo de revisión y el detalle técnico.',
+        message: 'Selecciona una orden para revisar sus datos.',
       );
     }
 
@@ -173,98 +291,34 @@ class _DocumentDetail extends StatelessWidget {
         children: [
           SectionHeader(
             title: document!.sourceFilename,
-            subtitle: 'Detalle operativo de la orden y motivo de revisión.',
+            subtitle: _isEditable
+                ? 'Corrige la información que falte y guarda la orden.'
+                : 'Información operativa de la orden.',
           ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              DetailChip(label: 'Cliente', value: document!.customerName ?? document!.customerCode ?? '-'),
-              DetailChip(label: 'Ruta', value: document!.routeCode ?? '-'),
-              DetailChip(label: 'Entrega', value: document!.deliveryDate == null ? '-' : MaterialLocalizations.of(context).formatShortDate(document!.deliveryDate!)),
-              DetailChip(label: 'Estado', value: document!.status.label),
+              StatusPill(status: document!.status),
             ],
           ),
           const SizedBox(height: 20),
-          Text('Motivos', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          if (document!.reasons.isEmpty)
-            Text('Sin observaciones.', style: Theme.of(context).textTheme.bodyMedium)
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final reason in document!.reasons)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.arrow_right_rounded, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(reason)),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+          _buildReviewReasons(context),
           const SizedBox(height: 20),
-          Text('Líneas del PDF', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          if (_isEditable)
+            _buildEditableFields(context)
+          else
+            _buildReadOnlyFields(context),
+          const SizedBox(height: 20),
+          Text('Líneas de la orden', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
           document!.items.isEmpty
               ? const EmptyStatePanel(
-                  title: 'No se extrajeron ítems',
-                  message: 'Si el documento no trae líneas confiables, la orden queda en revisión.',
+                  title: 'No se encontraron productos',
+                  message: 'Si el documento no trae productos legibles, la orden queda pendiente de revisión.',
                 )
-              : ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: document!.items.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final item = document!.items[index];
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item.productDescription ?? item.description,
-                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                              Text('x${item.quantity}', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if (item.productCode != null) DetailChip(label: 'Código', value: item.productCode!),
-                              DetailChip(label: 'Match', value: item.matchStatus),
-                              if (item.pdfCode != null) DetailChip(label: 'PDF', value: item.pdfCode!),
-                              if (item.confidence != null) DetailChip(label: 'Confianza', value: item.confidence!.toStringAsFixed(2)),
-                            ],
-                          ),
-                          if (item.reason != null) ...[
-                            const SizedBox(height: 8),
-                            Text(item.reason!, style: Theme.of(context).textTheme.bodySmall),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
-                ),
+              : _buildItemsList(context),
           const SizedBox(height: 20),
           Card(
             child: Theme(
@@ -272,7 +326,7 @@ class _DocumentDetail extends StatelessWidget {
               child: ExpansionTile(
                 tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 leading: const Icon(Icons.tune_rounded),
-                title: const Text('Trazabilidad técnica', style: TextStyle(fontWeight: FontWeight.w700)),
+                title: const Text('Detalles técnicos', style: TextStyle(fontWeight: FontWeight.w700)),
                 childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 children: [
                   Wrap(
@@ -291,6 +345,179 @@ class _DocumentDetail extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildReviewReasons(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('¿Qué requiere revisión?', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        if (document!.reasons.isEmpty)
+          Text('Sin observaciones.', style: Theme.of(context).textTheme.bodyMedium)
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final reason in document!.reasons)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.arrow_right_rounded, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(reason)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildEditableFields(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Datos de la orden', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _customerController,
+          decoration: const InputDecoration(
+            labelText: 'Cliente',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _routeController,
+          decoration: const InputDecoration(
+            labelText: 'Ruta',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: _pickDeliveryDate,
+          borderRadius: BorderRadius.circular(4),
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Fecha de entrega',
+              border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.calendar_month_rounded),
+            ),
+            child: Text(
+              _deliveryDate == null
+                  ? 'Seleccionar fecha'
+                  : MaterialLocalizations.of(context).formatShortDate(_deliveryDate!),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: _saving ? null : _saveCorrection,
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+          icon: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_rounded),
+          label: Text(
+            _saving ? 'Guardando...' : 'Guardar corrección',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'La corrección se conserva en esta sesión y la orden pasa a consolidación.',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReadOnlyFields(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        DetailChip(label: 'Cliente', value: document!.customerName ?? document!.customerCode ?? '-'),
+        DetailChip(label: 'Ruta', value: document!.routeCode ?? '-'),
+        DetailChip(label: 'Entrega', value: document!.deliveryDate == null ? '-' : MaterialLocalizations.of(context).formatShortDate(document!.deliveryDate!)),
+      ],
+    );
+  }
+
+  Widget _buildItemsList(BuildContext context) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: document!.items.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final item = document!.items[index];
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.productDescription ?? item.description,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (_isEditable) ...[
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 96,
+                      child: TextField(
+                        controller: _quantityControllers[index],
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        decoration: const InputDecoration(
+                          labelText: 'Cantidad',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                  ] else
+                    Text('x${item.quantity}', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  DetailChip(label: 'Coincidencia', value: item.matchStatus),
+                ],
+              ),
+              if (item.reason != null) ...[
+                const SizedBox(height: 8),
+                Text(item.reason!, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

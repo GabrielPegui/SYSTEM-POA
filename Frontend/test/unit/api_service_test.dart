@@ -31,6 +31,18 @@ void main() {
         throwsA(isA<ServerFailure>()),
       );
     });
+
+    test('sends PUT requests with the expected path and method', () async {
+      final mockHttpClient = MockClient((request) async {
+        expect(request.method, 'PUT');
+        expect(request.url.path, '/orders/ORD-1/validate');
+        return http.Response(jsonEncode({}), 200);
+      });
+
+      final apiClient = ApiClient(client: mockHttpClient);
+      final response = await apiClient.put('/orders/ORD-1/validate');
+      expect(response.statusCode, 200);
+    });
   });
 
   group('OrdersApiService', () {
@@ -76,6 +88,18 @@ void main() {
 
       expect(snapshot.usingDemoData, isTrue);
       expect(snapshot.persistedOrders, isNotEmpty);
+    });
+
+    test('validateOrder hits the validate endpoint without a body', () async {
+      final mockHttpClient = MockClient((request) async {
+        expect(request.method, 'PUT');
+        expect(request.url.path, '/orders/ORD-42/validate');
+        expect(request.body, isEmpty);
+        return http.Response(jsonEncode({}), 200);
+      });
+
+      final service = OrdersApiService(apiClient: ApiClient(client: mockHttpClient));
+      await service.validateOrder('ORD-42');
     });
   });
 }

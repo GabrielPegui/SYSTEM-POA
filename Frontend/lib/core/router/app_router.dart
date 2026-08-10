@@ -73,21 +73,6 @@ class _AppShell extends StatelessWidget {
       icon: Icons.view_agenda_outlined,
     ),
     (
-      path: AppRoutes.customers,
-      label: 'Clientes',
-      icon: Icons.people_alt_outlined,
-    ),
-    (
-      path: AppRoutes.products,
-      label: 'Productos',
-      icon: Icons.inventory_2_outlined,
-    ),
-    (
-      path: AppRoutes.routes,
-      label: 'Rutas',
-      icon: Icons.route_outlined,
-    ),
-    (
       path: AppRoutes.configuration,
       label: 'Configuración',
       icon: Icons.settings_outlined,

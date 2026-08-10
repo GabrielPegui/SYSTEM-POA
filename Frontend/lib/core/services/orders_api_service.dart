@@ -75,6 +75,16 @@ class OrdersApiService {
     return processPdfBytes(bytes: bytes, filename: filename);
   }
 
+  /// Marca una orden como validada tras la revisión humana.
+  ///
+  /// El backend solo expone ``PUT /orders/{order_number}/validate`` sin cuerpo:
+  /// no persiste correcciones de campos. La corrección local se conserva en la
+  /// sesión del frontend; la persistencia real de campos corregidos queda
+  /// pendiente de capacidad backend.
+  Future<void> validateOrder(String orderNumber) async {
+    await _apiClient.put('/orders/$orderNumber/validate');
+  }
+
   OverviewSnapshot _demoSnapshot(String message) {
     final persistedOrders = [
       OrderListView(

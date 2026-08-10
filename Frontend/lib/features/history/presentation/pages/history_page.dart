@@ -17,6 +17,14 @@ class HistoryPage extends StatelessWidget {
       title: 'Consolidación',
       subtitle: 'Lo importante no es el PDF, sino la demanda agregada que deja para la operación.',
       actions: [
+        Tooltip(
+          message: 'La exportación a Excel o CSV estará disponible en una próxima versión.',
+          child: OutlinedButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.file_download_outlined),
+            label: const Text('Exportar'),
+          ),
+        ),
         SegmentedButton<int>(
           segments: const [
             ButtonSegment<int>(value: 0, label: Text('Producto'), icon: Icon(Icons.inventory_2_outlined)),

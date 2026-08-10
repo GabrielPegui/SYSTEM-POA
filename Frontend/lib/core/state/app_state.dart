@@ -57,6 +57,7 @@ class AppState extends ChangeNotifier {
   int _batchTotal = 0;
   int _batchDone = 0;
   BatchSummary? _batchSummary;
+  DateTime? _lastSyncAt;
 
   WorkspaceView get currentView => _currentView;
   OverviewSnapshot get snapshot => _snapshot;
@@ -66,6 +67,9 @@ class AppState extends ChangeNotifier {
   String get draftPath => _draftPath;
   ProcessedDocumentView? get selectedDocument => _selectedDocument;
   int get groupingIndex => _groupingIndex;
+
+  /// Momento de la última carga exitosa de datos (backend o demostración).
+  DateTime? get lastSyncAt => _lastSyncAt;
 
   /// Número de archivos del lote actual (0 si no hay lote en curso).
   int get batchTotal => _batchTotal;
@@ -112,6 +116,7 @@ class AppState extends ChangeNotifier {
         usingDemoData: fresh.usingDemoData,
         bannerMessage: fresh.bannerMessage,
       );
+      _lastSyncAt = DateTime.now();
       _selectInitialDocument();
     } catch (error) {
       _errorMessage = 'No fue posible cargar el tablero: $error';
@@ -315,6 +320,51 @@ class AppState extends ChangeNotifier {
       bannerMessage: _snapshot.bannerMessage,
     );
     _selectedDocument = document;
+  }
+
+  /// Aplica una corrección operativa a un documento de la bandeja.
+  ///
+  /// Reemplaza el documento de sesión con los valores corregidos y lo marca
+  /// como procesado, de modo que salga de la bandeja de revisión y entre a la
+  /// consolidación. Cuando el documento tiene número de orden, se notifica al
+  /// backend (``PUT /orders/{order_number}/validate``) de forma best-effort:
+  /// si el servidor no responde, la corrección queda conservada en la sesión.
+  Future<void> applyCorrection(
+    ProcessedDocumentView original, {
+    required String customerName,
+    String? routeCode,
+    DateTime? deliveryDate,
+    List<OrderLineView>? correctedItems,
+  }) async {
+    final trimmedName = customerName.trim();
+    final trimmedRoute = routeCode?.trim();
+    final corrected = ProcessedDocumentView(
+      sourceFilename: original.sourceFilename,
+      parserId: original.parserId,
+      documentType: original.documentType,
+      status: OrderProcessingStatus.processed,
+      orderNumber: original.orderNumber,
+      customerCode: original.customerCode,
+      customerName: trimmedName.isEmpty ? original.customerName : trimmedName,
+      routeCode: trimmedRoute == null || trimmedRoute.isEmpty ? null : trimmedRoute,
+      deliveryDate: deliveryDate,
+      routeReason: original.routeReason,
+      reasons: const [],
+      items: correctedItems ?? original.items,
+      receivedAt: original.receivedAt ?? DateTime.now(),
+    );
+    _addSessionDocument(corrected);
+    notifyListeners();
+
+    final orderNumber = corrected.orderNumber;
+    if (orderNumber != null && orderNumber.isNotEmpty) {
+      try {
+        await _service.validateOrder(orderNumber);
+      } catch (_) {
+        // La corrección ya quedó registrada en la sesión. La persistencia de la
+        // validación queda pendiente de disponibilidad del backend.
+      }
+    }
   }
 
   static String _friendlyError(Object error) {

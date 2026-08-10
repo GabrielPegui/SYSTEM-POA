@@ -31,6 +31,12 @@ class ApiClient {
     );
   }
 
+  Future<http.Response> put(String path, {Object? body}) {
+    return _send(
+      () => _client.put(_uri(path), body: body).timeout(AppConfig.receiveTimeout),
+    );
+  }
+
   Future<http.Response> postMultipart(
     String path, {
     Map<String, String>? fields,
