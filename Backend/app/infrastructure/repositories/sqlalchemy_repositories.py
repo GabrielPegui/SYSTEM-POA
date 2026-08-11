@@ -12,7 +12,7 @@ matching must resolve the correspondence first, then persistence stores it
 missing, ``CatalogReferenceNotFoundError`` is raised.
 """
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.domain.document_processing.history import ProcessingHistoryRecord
@@ -35,6 +35,7 @@ from app.infrastructure.persistence.mappers import (
 )
 from app.infrastructure.persistence.models import (
     CustomerModel,
+    OrderItemModel,
     OrderModel,
     ProcessingHistoryModel,
     RouteModel,
@@ -99,6 +100,14 @@ class SqlAlchemyOrderRepository(OrderRepository):
     surrogate id and the route by its code, and a
     ``CatalogReferenceNotFoundError`` is raised if any is missing. Persistence
     never creates catalog entities implicitly.
+
+    When the order carries a ``source_filename`` and a persisted row already
+    holds that exact file name, ``save`` REPLACES the existing row (order
+    fields and its ``order_items``) instead of inserting a duplicate: the same
+    document is identified by its file name, so re-processing updates it.
+    Orders without ``source_filename`` (manual registration) always insert.
+    ``delete_all`` removes every order together with its items (FK-aware), a
+    development-only cleanup; the tables and migrations are never touched.
     """
 
     def __init__(self, session: Session) -> None:
@@ -108,18 +117,32 @@ class SqlAlchemyOrderRepository(OrderRepository):
         self._require_route(order.customer.route.code)
         customer_model = self._require_customer(order.customer)
 
-        order_model = OrderModel(
-            order_number=order.order_number,
-            customer_id=customer_model.id,
-            delivery_date=order.delivery_date,
-            status=order.status.value,
-        )
-        for item in order.items:
-            order_model.items.append(domain_to_item_model(item))
+        existing = self._find_by_source_filename(order.source_filename)
 
-        self._session.add(order_model)
         try:
-            self._session.flush()
+            if existing is None:
+                order_model = OrderModel(
+                    order_number=order.order_number,
+                    customer_id=customer_model.id,
+                    delivery_date=order.delivery_date,
+                    status=order.status.value,
+                    source_filename=order.source_filename,
+                )
+                for item in order.items:
+                    order_model.items.append(domain_to_item_model(item))
+                self._session.add(order_model)
+                self._session.flush()
+                persisted_id = order_model.id
+            else:
+                existing.order_number = order.order_number
+                existing.customer_id = customer_model.id
+                existing.delivery_date = order.delivery_date
+                existing.status = order.status.value
+                existing.source_filename = order.source_filename
+                existing.items.clear()
+                for item in order.items:
+                    existing.items.append(domain_to_item_model(item))
+                persisted_id = existing.id
             self._session.commit()
         except Exception:
             self._session.rollback()
@@ -128,9 +151,32 @@ class SqlAlchemyOrderRepository(OrderRepository):
         persisted = self._session.scalars(
             select(OrderModel)
             .options(*_order_load_options())
-            .where(OrderModel.id == order_model.id)
+            .where(OrderModel.id == persisted_id)
         ).one()
         return order_to_domain(persisted)
+
+    def _find_by_source_filename(self, source_filename: str | None) -> OrderModel | None:
+        if not source_filename:
+            return None
+        return self._session.scalars(
+            select(OrderModel).where(OrderModel.source_filename == source_filename)
+        ).first()
+
+    def delete_all(self) -> int:
+        count = self._session.scalar(select(func.count()).select_from(OrderModel)) or 0
+        order_ids = self._session.scalars(select(OrderModel.id)).all()
+        try:
+            if order_ids:
+                self._session.execute(
+                    delete(OrderItemModel).where(OrderItemModel.order_id.in_(order_ids))
+                )
+                self._session.execute(delete(OrderModel))
+                self._session.flush()
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
+        return count
 
     def get_by_number(self, order_number: str) -> Order | None:
         model = self._session.scalars(

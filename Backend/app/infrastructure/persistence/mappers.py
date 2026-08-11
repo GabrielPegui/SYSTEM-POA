@@ -55,6 +55,8 @@ def order_to_domain(model: OrderModel) -> Order:
         ),
         status=OrderStatus(model.status),
         id=model.id,
+        source_filename=model.source_filename,
+        created_at=model.created_at,
     )
 
 

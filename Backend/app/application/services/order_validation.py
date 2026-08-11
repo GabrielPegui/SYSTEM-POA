@@ -46,6 +46,7 @@ class OrderValidationService:
         items: tuple[PurchaseOrderItemDocument, ...],
         delivery_date: date | None,
         order_number: str | None,
+        source_filename: str | None = None,
     ) -> ValidationDecision:
         reasons: list[str] = []
         has_no_match = customer_match is None or customer_match.outcome is MatchOutcome.NO_MATCH
@@ -78,7 +79,7 @@ class OrderValidationService:
             status = ProcessingStatus.PROCESSED
 
         order = (
-            self._build_order(order_number, customer_match, items, delivery_date)
+            self._build_order(order_number, customer_match, items, delivery_date, source_filename)
             if status is ProcessingStatus.PROCESSED
             else None
         )
@@ -90,6 +91,7 @@ class OrderValidationService:
         customer_match: CustomerMatchResult,
         items: tuple[PurchaseOrderItemDocument, ...],
         delivery_date: date | None,
+        source_filename: str | None,
     ) -> Order:
         assert customer_match.matched_customer is not None
         assert order_number is not None
@@ -107,4 +109,5 @@ class OrderValidationService:
                 )
                 for item in items
             ),
+            source_filename=source_filename,
         )

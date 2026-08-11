@@ -1,7 +1,7 @@
 """Order domain entity."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from app.domain.entities.customer import Customer
 from app.domain.entities.order_item import OrderItem
@@ -20,6 +20,12 @@ class Order:
     ``status`` defaults to ``OrderStatus.PROCESSED`` because the entity is
     created as a result of document processing (ADR-002); transitioning to
     ``PENDING_VALIDATION``/``VALIDATED`` belongs to the application layer.
+
+    ``source_filename`` is the business identity of a persisted processed
+    document: the exact PDF file name. Re-processing the same file name
+    updates the existing order (including its items) instead of creating a
+    duplicate; a different file name is a different document. Orders created
+    through the manual registration flow carry ``None``.
     """
 
     order_number: str
@@ -28,6 +34,8 @@ class Order:
     items: tuple[OrderItem, ...]
     status: OrderStatus = OrderStatus.PROCESSED
     id: int | None = None
+    source_filename: str | None = None
+    created_at: datetime | None = None
 
     def __post_init__(self) -> None:
         require_not_blank("Order number", self.order_number)

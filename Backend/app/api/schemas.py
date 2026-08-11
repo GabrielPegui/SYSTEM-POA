@@ -50,6 +50,16 @@ class OrderItemResponse(BaseModel):
     ean: str | None = None
 
 
+class ClearOrdersResponse(BaseModel):
+    """Result of the development-only orders cleanup.
+
+    ``deleted`` is the number of persisted orders removed. The endpoint never
+    touches the schema: tables and migrations remain for audit.
+    """
+
+    deleted: int
+
+
 class OrderResponse(BaseModel):
     """An order as returned by the API."""
 
@@ -61,6 +71,8 @@ class OrderResponse(BaseModel):
     route_code: str
     delivery_date: date
     status: OrderStatus
+    source_filename: str | None = None
+    processed_at: datetime | None = None
     items: list[OrderItemResponse]
 
 

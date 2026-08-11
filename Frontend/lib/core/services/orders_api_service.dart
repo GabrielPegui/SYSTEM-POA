@@ -85,6 +85,14 @@ class OrdersApiService {
     await _apiClient.put('/orders/$orderNumber/validate');
   }
 
+  /// Elimina todas las órdenes persistidas en el backend (limpieza de
+  /// desarrollo, endpoint ``DELETE /orders/development``).
+  ///
+  /// El backend solo borra datos: las tablas y las migraciones se conservan.
+  Future<void> clearPersistedOrders() async {
+    await _apiClient.delete('/orders/development');
+  }
+
   OverviewSnapshot _demoSnapshot(String message) {
     final persistedOrders = [
       OrderListView(
@@ -94,6 +102,7 @@ class OrdersApiService {
         routeCode: 'PPN403',
         deliveryDate: DateTime(2026, 8, 12),
         status: 'processed',
+        sourceFilename: 'jumbo_higuey.pdf',
         items: const [
           OrderItemView(
             description: 'PEPIN PAN HOT DOG 8/1',
@@ -109,6 +118,7 @@ class OrdersApiService {
         routeCode: 'PPN001',
         deliveryDate: DateTime(2026, 8, 11),
         status: 'processed',
+        sourceFilename: 'operadora_westpark.pdf',
         items: const [
           OrderItemView(
             description: 'PEPIN VIGA MEDIANA BLANCO',

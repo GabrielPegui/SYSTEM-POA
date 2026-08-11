@@ -18,6 +18,13 @@ Schema notes (definitive model):
 - ``orders.order_number`` is indexed but NOT unique: order numbering is
   per-customer in the real data; global uniqueness is pending business
   confirmation.
+- ``orders.source_filename`` is the persistent business identity of a
+  processed document: the exact PDF file name. The identity rule is enforced
+  at the repository level (re-saving the same file name replaces the existing
+  row and its ``order_items``) and, on SQL Server, backed by a filtered
+  UNIQUE index on non-null values (migration ``0004``). ``NULL`` is allowed so
+  manual registrations (which have no source document) do not collide.
+  Replacing an order also replaces its ``order_items`` (delete-orphan).
 - ``order_items`` stores the product information exactly as printed in the PDF
   (``description``, ``quantity``) plus ``pdf_code``/``ean`` as traceability
   only. There is no product catalog table in the definitive model.
@@ -105,6 +112,7 @@ class OrderModel(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="processed", index=True
     )
+    source_filename: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now

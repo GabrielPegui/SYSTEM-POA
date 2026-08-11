@@ -11,12 +11,12 @@ from app.infrastructure.document_processing.parsers.registry import (
 )
 
 SAMPLES = {
-    "OLE.pdf": "mercadal_parser",
+    "OLE(imagen).pdf": "mercadal_parser",
     "mercadal.pdf": "mercadal_parser",
-    "BOLIN 4012234.pdf": "hilton_parser",
+    "OPERADORA WESTPARK, SAS.pdf": "hilton_parser",
     "carrefour.PDF": "cde_hyper_parser",
     "Orden de Pedido por e-mail.pdf": "jumbo_parser",
-    "bravo.pdf": "bravo_parser",
+    "bravo(imagen).pdf": "bravo_parser",
     "plazalama.pdf": "plaza_lama_parser",
 }
 
@@ -37,7 +37,7 @@ def test_pipeline_detects_and_parses_sample(reader, detector, samples_dir, filen
 
 
 def test_mercadal_parses_first_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "OLE.pdf")
+    raw = reader.read(samples_dir / "OLE(imagen).pdf")
     document = DEFAULT_PARSERS["mercadal_parser"].parse(raw)
     assert document.order_number == "4000326734"
     assert document.customer_code == "101532483"
@@ -61,7 +61,7 @@ def test_mercadal_parses_second_sample(reader, samples_dir):
 
 
 def test_hilton_parses_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "BOLIN 4012234.pdf")
+    raw = reader.read(samples_dir / "OPERADORA WESTPARK, SAS.pdf")
     document = DEFAULT_PARSERS["hilton_parser"].parse(raw)
     assert document.order_number == "4012234"
     assert document.customer_code == "132407083"
@@ -106,7 +106,7 @@ def test_jumbo_parses_sample(reader, samples_dir):
 
 
 def test_bravo_parses_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "bravo.pdf")
+    raw = reader.read(samples_dir / "bravo(imagen).pdf")
     document = DEFAULT_PARSERS["bravo_parser"].parse(raw)
     assert document.order_number == "3846637"
     assert len(document.items) == 1

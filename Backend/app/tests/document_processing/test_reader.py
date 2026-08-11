@@ -15,10 +15,10 @@ def test_reader_is_abstract() -> None:
 
 
 def test_pdfplumber_reader_reads_text_pdf(reader: PdfplumberPDFReader, samples_dir: Path) -> None:
-    raw = reader.read(samples_dir / "OLE.pdf")
+    raw = reader.read(samples_dir / "OLE(imagen).pdf")
 
     assert isinstance(raw, RawDocumentData)
-    assert raw.filename == "OLE.pdf"
+    assert raw.filename == "OLE(imagen).pdf"
     assert raw.page_count == 1
     assert "Pedido de compra" in raw.full_text
     assert raw.producer is not None
@@ -41,7 +41,7 @@ def test_pdfplumber_reader_keeps_per_page_text(reader: PdfplumberPDFReader, samp
 
 
 def test_pdfplumber_reader_keeps_positional_words(reader: PdfplumberPDFReader, samples_dir: Path) -> None:
-    raw = reader.read(samples_dir / "BOLIN 4012234.pdf")
+    raw = reader.read(samples_dir / "OPERADORA WESTPARK, SAS.pdf")
 
     page = raw.pages[0]
     assert page.words

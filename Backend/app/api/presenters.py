@@ -24,6 +24,8 @@ def to_order_response(order: Order) -> OrderResponse:
         route_code=order.customer.route.code,
         delivery_date=order.delivery_date,
         status=order.status,
+        source_filename=order.source_filename,
+        processed_at=order.created_at,
         items=[
             OrderItemResponse(
                 description=item.description,

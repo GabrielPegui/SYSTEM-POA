@@ -52,21 +52,31 @@ class InMemoryCustomerRepository(CustomerRepository):
 class InMemoryOrderRepository(OrderRepository):
     """Order repository backed by in-memory dicts.
 
-    ``save`` assigns surrogate ids like the persistence implementation;
-    ``update_status`` replaces the stored order with the new status.
+    ``save`` assigns surrogate ids like the persistence implementation and
+    mirrors the source-filename identity rule: re-saving the same
+    ``source_filename`` replaces the stored order (same surrogate id) instead
+    of creating a duplicate. ``update_status`` replaces the stored order with
+    the new status. ``delete_all`` empties every stored order.
     """
 
     def __init__(self) -> None:
         self._by_id: dict[int, Order] = {}
         self._by_number: dict[str, int] = {}
+        self._by_filename: dict[str, int] = {}
         self._next_id = 1
 
     def save(self, order: Order) -> Order:
-        if order.id is None:
-            order = replace(order, id=self._next_id)
+        existing_id = order.id
+        if existing_id is None and order.source_filename is not None:
+            existing_id = self._by_filename.get(order.source_filename)
+        if existing_id is None:
+            existing_id = self._next_id
             self._next_id += 1
-        self._by_id[order.id] = order
-        self._by_number[order.order_number] = order.id
+        order = replace(order, id=existing_id)
+        self._by_id[existing_id] = order
+        self._by_number[order.order_number] = existing_id
+        if order.source_filename is not None:
+            self._by_filename[order.source_filename] = existing_id
         return order
 
     def get_by_number(self, order_number: str) -> Order | None:
@@ -86,6 +96,13 @@ class InMemoryOrderRepository(OrderRepository):
     def list(self) -> list[Order]:
         return [self._by_id[order_id] for order_id in sorted(self._by_id, reverse=True)]
 
+    def delete_all(self) -> int:
+        count = len(self._by_id)
+        self._by_id.clear()
+        self._by_number.clear()
+        self._by_filename.clear()
+        return count
+
 
 class FailingOrderRepository(OrderRepository):
     """Order repository that always fails, simulating a persistence error."""
@@ -103,6 +120,9 @@ class FailingOrderRepository(OrderRepository):
         raise self._error
 
     def list(self) -> list[Order]:
+        raise self._error
+
+    def delete_all(self) -> int:
         raise self._error
 
 

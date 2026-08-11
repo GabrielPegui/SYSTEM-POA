@@ -13,7 +13,7 @@ class ConfigurationPage extends StatelessWidget {
 
     return AppPageShell(
       title: 'Configuración',
-      subtitle: 'Parámetros de operación y documentos procesados en esta sesión.',
+      subtitle: 'Parámetros de operación y documentos procesados (sesión y persistidos).',
       actions: [
         OutlinedButton.icon(
           onPressed: () => _confirmClearSession(context, state),
@@ -27,12 +27,12 @@ class ConfigurationPage extends StatelessWidget {
           children: [
             const SectionHeader(
               title: 'PDFs procesados',
-              subtitle: 'Documentos procesados en esta sesión, con su fecha de procesamiento.',
+              subtitle: 'Documentos de la sesión y órdenes persistidas, con su fecha de procesamiento.',
             ),
             const SizedBox(height: 16),
             BolinCard(
               padding: const EdgeInsets.all(0),
-              child: state.snapshot.sessionDocuments.isEmpty
+              child: state.documents.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.all(20),
                       child: EmptyStatePanel(
@@ -53,7 +53,7 @@ class ConfigurationPage extends StatelessWidget {
                               DataColumn(label: Text('Estado')),
                             ],
                             rows: [
-                              for (final document in state.snapshot.sessionDocuments)
+                              for (final document in state.documents)
                                 DataRow(
                                   cells: [
                                     DataCell(Text(
@@ -85,10 +85,10 @@ class ConfigurationPage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('¿Vaciar la sesión?'),
+        title: const Text('¿Vaciar la data?'),
         content: const Text(
-          'Se quitarán los documentos importados en esta sesión y la selección actual. '
-          'Las órdenes persistidas en el servidor no se eliminan.',
+          'Se eliminarán los documentos de esta sesión y las órdenes persistidas en '
+          'el servidor. La estructura de datos y el historial de auditoría se conservan.',
         ),
         actions: [
           TextButton(
@@ -103,7 +103,7 @@ class ConfigurationPage extends StatelessWidget {
       ),
     );
     if (confirmed ?? false) {
-      state.clearSession();
+      await state.clearData();
     }
   }
 }

@@ -100,6 +100,60 @@ void main() {
       expect(order.items.first.pdfCode, '7461');
       expect(order.items.first.ean, '007461');
     });
+
+    test('parses source_filename and processed_at into fields', () {
+      final json = {
+        'id': 4,
+        'order_number': 'ORD-4',
+        'customer_name': 'Cliente D',
+        'route_code': 'R04',
+        'delivery_date': '2026-08-15',
+        'status': 'processed',
+        'source_filename': 'orden_456.pdf',
+        'processed_at': '2026-08-08T15:30:00+00:00',
+        'items': <Map<String, dynamic>>[],
+      };
+
+      final order = OrderListView.fromJson(json);
+      expect(order.sourceFilename, 'orden_456.pdf');
+      expect(order.processedAt, DateTime.utc(2026, 8, 8, 15, 30));
+    });
+
+    test('source_filename and processed_at are null when absent or invalid', () {
+      final json = {
+        'id': 5,
+        'order_number': 'ORD-5',
+        'customer_name': 'Cliente E',
+        'route_code': 'R05',
+        'delivery_date': '2026-08-15',
+        'status': 'processed',
+        'processed_at': 'no-es-una-fecha',
+        'items': <Map<String, dynamic>>[],
+      };
+
+      final order = OrderListView.fromJson(json);
+      expect(order.sourceFilename, isNull);
+      expect(order.processedAt, isNull);
+    });
+
+    test('fromOrder keeps the PDF filename and the processing timestamp', () {
+      final persisted = OrderListView(
+        id: 7,
+        orderNumber: 'ORD-7',
+        customerName: 'Cliente F',
+        routeCode: 'R07',
+        deliveryDate: DateTime(2026, 8, 15),
+        status: 'processed',
+        sourceFilename: 'cliente_f_orden.pdf',
+        processedAt: DateTime.utc(2026, 8, 8, 9, 0),
+        items: const [OrderItemView(description: 'Pan Pepin', quantity: 12)],
+      );
+
+      final document = ProcessedDocumentView.fromOrder(persisted);
+      expect(document.sourceFilename, 'cliente_f_orden.pdf');
+      expect(document.receivedAt, DateTime.utc(2026, 8, 8, 9, 0));
+      expect(document.status, OrderProcessingStatus.processed);
+    });
   });
 
   group('ProcessedDocumentView', () {

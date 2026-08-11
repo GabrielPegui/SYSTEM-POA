@@ -37,6 +37,12 @@ class ApiClient {
     );
   }
 
+  Future<http.Response> delete(String path, {Object? body}) {
+    return _send(
+      () => _client.delete(_uri(path), body: body).timeout(AppConfig.receiveTimeout),
+    );
+  }
+
   Future<http.Response> postMultipart(
     String path, {
     Map<String, String>? fields,

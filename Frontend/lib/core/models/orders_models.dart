@@ -146,7 +146,7 @@ class ProcessedDocumentView {
 
   factory ProcessedDocumentView.fromOrder(OrderListView order) {
     return ProcessedDocumentView(
-      sourceFilename: order.orderNumber,
+      sourceFilename: order.sourceFilename ?? order.orderNumber,
       parserId: 'persisted_order',
       documentType: 'order',
       status: OrderProcessingStatus.processed,
@@ -160,7 +160,7 @@ class ProcessedDocumentView {
       items: [
         for (final item in order.items) OrderLineView.fromOrderJson(item.toJson()),
       ],
-      receivedAt: null,
+      receivedAt: order.processedAt,
     );
   }
 }
@@ -197,6 +197,8 @@ class OrderListView {
     required this.deliveryDate,
     required this.status,
     required this.items,
+    this.sourceFilename,
+    this.processedAt,
   });
 
   final int id;
@@ -207,6 +209,15 @@ class OrderListView {
   final String status;
   final List<OrderItemView> items;
 
+  /// PDF de origen persistido en el backend (identidad del documento).
+  ///
+  /// El backend garantiza una sola orden por este nombre de archivo: volver a
+  /// procesar el mismo PDF lo reemplaza en lugar de duplicarlo.
+  final String? sourceFilename;
+
+  /// Fecha y hora de procesamiento/persistencia registrada por el backend.
+  final DateTime? processedAt;
+
   factory OrderListView.fromJson(Map<String, dynamic> json) {
     return OrderListView(
       id: (json['id'] as num?)?.toInt() ?? 0,
@@ -215,6 +226,8 @@ class OrderListView {
       routeCode: json['route_code'] as String? ?? '',
       deliveryDate: DateTime.tryParse(json['delivery_date'] as String? ?? ''),
       status: json['status'] as String? ?? 'processed',
+      sourceFilename: json['source_filename'] as String?,
+      processedAt: DateTime.tryParse(json['processed_at'] as String? ?? ''),
       items: [
         for (final item in (json['items'] as List<dynamic>? ?? const []))
           OrderItemView(

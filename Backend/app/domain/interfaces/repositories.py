@@ -47,11 +47,17 @@ class CustomerRepository(ABC):
 
 
 class OrderRepository(ABC):
-    """Contract to persist and retrieve orders."""
+    """Contract to persist and retrieve orders.
+
+    ``save`` uses the domain ``source_filename`` as the persistent identity of
+    a processed document: re-saving the same file name replaces the existing
+    order (including its items) instead of inserting a duplicate. Orders
+    without a ``source_filename`` (manual registration) always insert.
+    """
 
     @abstractmethod
     def save(self, order: Order) -> Order:
-        """Persist an order and return it with its assigned identity."""
+        """Persist (or replace) an order and return its current state."""
 
     @abstractmethod
     def get_by_number(self, order_number: str) -> Order | None:
@@ -64,6 +70,14 @@ class OrderRepository(ABC):
     @abstractmethod
     def list(self) -> list[Order]:
         """Return the persisted orders, newest first."""
+
+    @abstractmethod
+    def delete_all(self) -> int:
+        """Delete every persisted order and its items; return the number deleted.
+
+        Development-only cleanup: removes the data, never the tables or the
+        schema (migrations are preserved for audit).
+        """
 
 
 class ProcessingHistoryRepository(ABC):

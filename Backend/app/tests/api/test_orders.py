@@ -7,9 +7,10 @@ fakes provided by ``app.tests.api.conftest``.
 """
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
-from app.api.deps import get_create_order
-from app.application.use_cases import CreateOrder
+from app.api.deps import get_clear_development_orders, get_create_order
+from app.application.use_cases import ClearDevelopmentOrders, CreateOrder
 from app.domain.entities import Customer, Route
 from app.domain.enums import OrderStatus
 from app.tests.application.fakes import (
@@ -121,6 +122,24 @@ class TestListOrders:
         assert len(body) == 1
         assert body[0]["order_number"] == order.order_number
 
+    def test_list_orders_exposes_processed_at(self, client, order_repo, order) -> None:
+        order_repo.save(
+            replace(
+                order,
+                source_filename="orden_123.pdf",
+                created_at=datetime(2026, 8, 8, 15, 30, tzinfo=UTC),
+            )
+        )
+
+        response = client.get("/orders")
+
+        assert response.status_code == 200
+        body = response.json()[0]
+        assert body["source_filename"] == "orden_123.pdf"
+        assert datetime.fromisoformat(body["processed_at"]) == datetime(
+            2026, 8, 8, 15, 30, tzinfo=UTC
+        )
+
     def test_list_orders_empty(self, client) -> None:
         response = client.get("/orders")
 
@@ -162,3 +181,32 @@ class TestUnexpectedErrors:
 
         assert response.status_code == 500
         assert "Internal server error" in response.json()["detail"]
+
+
+class TestClearDevelopmentOrders:
+    def test_delete_removes_all_persisted_orders_afterwards_reprocessing_works(
+        self, client, order_repo, order
+    ) -> None:
+        order_repo.save(order)
+        client.app.dependency_overrides[get_clear_development_orders] = (
+            lambda: ClearDevelopmentOrders(order_repo)
+        )
+
+        response = client.delete("/orders/development")
+
+        assert response.status_code == 200
+        assert response.json() == {"deleted": 1}
+        assert client.get("/orders").json() == []
+
+        created = client.post("/orders", json=_order_payload())
+        assert created.status_code == 201
+
+    def test_delete_when_empty_returns_zero(self, client, order_repo) -> None:
+        client.app.dependency_overrides[get_clear_development_orders] = (
+            lambda: ClearDevelopmentOrders(order_repo)
+        )
+
+        response = client.delete("/orders/development")
+
+        assert response.status_code == 200
+        assert response.json() == {"deleted": 0}

@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.deps import (
+    get_clear_development_orders,
     get_create_order,
     get_get_order,
     get_list_orders,
@@ -25,12 +26,14 @@ from app.api.presenters import (
     to_process_order_response,
 )
 from app.api.schemas import (
+    ClearOrdersResponse,
     CreateOrderRequest,
     OrderResponse,
     ProcessOrderResponse,
 )
 from app.application.commands import CreateOrderCommand, CreateOrderItemCommand
 from app.application.use_cases import (
+    ClearDevelopmentOrders,
     CreateOrder,
     GetOrder,
     ListOrders,
@@ -148,3 +151,21 @@ def validate_order(
 ) -> OrderResponse:
     """Validate the order matching the given business number."""
     return to_order_response(use_case.execute(order_number))
+
+
+@router.delete(
+    "/development",
+    response_model=ClearOrdersResponse,
+    summary="Delete all persisted orders (development-only cleanup)",
+)
+def clear_development_orders(
+    use_case: Annotated[ClearDevelopmentOrders, Depends(get_clear_development_orders)],
+) -> ClearOrdersResponse:
+    """Delete every persisted order and its items (development cleanup).
+
+    Development-only: removes data, never the schema. The tables
+    (``orders``, ``order_items``, ``processing_history``) and the Alembic
+    migrations are preserved; the audit trail stays intact. After the cleanup
+    the same PDFs can be re-processed from scratch.
+    """
+    return ClearOrdersResponse(deleted=use_case.execute())

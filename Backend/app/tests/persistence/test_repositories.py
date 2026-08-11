@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from app.domain.document_processing.history import ProcessingHistoryRecord
 from app.domain.document_processing.processing import ProcessingStatus
+from app.domain.entities import OrderItem
 from app.domain.enums import OrderStatus
 from app.domain.exceptions import CatalogReferenceNotFoundError
 from app.infrastructure.persistence.models import (
@@ -186,6 +187,98 @@ def test_order_repository_list_newest_first(session, order, seeded_catalog) -> N
 
 def test_order_repository_list_empty(session) -> None:
     assert SqlAlchemyOrderRepository(session).list() == []
+
+
+def test_order_repository_save_stores_source_filename(session, order, seeded_catalog) -> None:
+    saved = SqlAlchemyOrderRepository(session).save(
+        replace(order, source_filename="mercadal.pdf")
+    )
+
+    assert saved.source_filename == "mercadal.pdf"
+
+
+def test_order_repository_save_preserves_processing_timestamp(session, order, seeded_catalog) -> None:
+    saved = SqlAlchemyOrderRepository(session).save(
+        replace(order, source_filename="mercadal.pdf")
+    )
+
+    assert saved.created_at is not None
+    stored = session.scalar(select(OrderModel).where(OrderModel.id == saved.id))
+    assert stored is not None
+    assert stored.created_at == saved.created_at
+
+
+def test_order_repository_save_same_source_filename_replaces_items(session, order, seeded_catalog) -> None:
+    """Re-saving the same file name updates one order and its items without
+    duplicates or orphans."""
+    repo = SqlAlchemyOrderRepository(session)
+    first = repo.save(replace(order, source_filename="mercadal.pdf"))
+    replaced = repo.save(
+        replace(
+            order,
+            source_filename="mercadal.pdf",
+            order_number="4000326759",
+            items=(OrderItem(description="OTRO PRODUCTO", quantity=3, pdf_code="9999"),),
+        )
+    )
+
+    assert replaced.id == first.id
+    assert replaced.order_number == "4000326759"
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 1
+    assert session.scalar(select(func.count()).select_from(OrderItemModel)) == 1
+    assert replaced.items[0].description == "OTRO PRODUCTO"
+    assert replaced.items[0].quantity == 3
+
+
+def test_order_repository_save_different_source_filenames_create_two_orders(
+    session, order, seeded_catalog
+) -> None:
+    repo = SqlAlchemyOrderRepository(session)
+    repo.save(replace(order, source_filename="a.pdf"))
+    repo.save(replace(order, order_number="12700", source_filename="b.pdf"))
+
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 2
+
+
+def test_order_repository_list_returns_one_per_source_filename(session, order, seeded_catalog) -> None:
+    repo = SqlAlchemyOrderRepository(session)
+    repo.save(replace(order, source_filename="a.pdf"))
+    repo.save(replace(order, order_number="12700", source_filename="a.pdf"))
+
+    result = repo.list()
+
+    assert len(result) == 1
+    assert result[0].source_filename == "a.pdf"
+
+
+def test_order_repository_save_without_source_filename_always_inserts(
+    session, order, seeded_catalog
+) -> None:
+    """Manual registrations (no file name) are never deduplicated."""
+    repo = SqlAlchemyOrderRepository(session)
+    repo.save(order)
+    repo.save(replace(order, order_number="12700"))
+
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 2
+
+
+def test_order_repository_delete_all_removes_orders_and_items(
+    session, order, seeded_catalog
+) -> None:
+    repo = SqlAlchemyOrderRepository(session)
+    repo.save(replace(order, source_filename="a.pdf"))
+    repo.save(replace(order, order_number="12700", source_filename="b.pdf"))
+
+    deleted = repo.delete_all()
+
+    assert deleted == 2
+    assert session.scalar(select(func.count()).select_from(OrderModel)) == 0
+    assert session.scalar(select(func.count()).select_from(OrderItemModel)) == 0
+    assert session.scalar(select(func.count()).select_from(CustomerModel)) == 1
+
+
+def test_order_repository_delete_all_empty_returns_zero(session) -> None:
+    assert SqlAlchemyOrderRepository(session).delete_all() == 0
 
 
 def _history_record(**overrides) -> ProcessingHistoryRecord:

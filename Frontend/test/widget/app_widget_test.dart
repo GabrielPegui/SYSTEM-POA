@@ -28,6 +28,8 @@ class FakeOrdersApiService extends OrdersApiService {
               routeCode: 'PPN101',
               deliveryDate: DateTime(2026, 8, 15),
               status: 'processed',
+              sourceFilename: 'orden_999.pdf',
+              processedAt: DateTime(2026, 8, 8, 15, 30),
               items: const [
                 OrderItemView(
                   description: 'Pan Pepin Blanco',
@@ -55,6 +57,12 @@ class FakeOrdersApiService extends OrdersApiService {
           usingDemoData: false,
           bannerMessage: 'Respuesta determinista para testing',
         );
+  }
+
+  @override
+  Future<void> clearPersistedOrders() async {
+    // No-op: no se toca red en los widget tests. [AppState.clearData] vacía
+    // igualmente el estado local.
   }
 }
 
@@ -287,17 +295,20 @@ void main() {
 
     expect(find.text('PDFs procesados'), findsOneWidget);
     expect(find.text('review_doc.pdf'), findsWidgets);
+    // Las órdenes persistidas del backend también son visibles en la lista.
+    expect(find.text('orden_999.pdf'), findsOneWidget);
 
     // Cancelar conserva la sesión.
     await tester.tap(find.widgetWithText(OutlinedButton, 'Vaciar data'));
     await tester.pumpAndSettle();
-    expect(find.text('¿Vaciar la sesión?'), findsOneWidget);
+    expect(find.text('¿Vaciar la data?'), findsOneWidget);
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();
     expect(find.text('review_doc.pdf'), findsWidgets);
+    expect(find.text('orden_999.pdf'), findsOneWidget);
     expect(appState.documents, isNotEmpty);
 
-    // Confirmar vacía la sesión pero conserva lo persistido en el backend.
+    // Confirmar vacía la sesión y lo persistido, dejando la UI vacía.
     await tester.tap(find.widgetWithText(OutlinedButton, 'Vaciar data'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Vaciar'));
@@ -305,8 +316,9 @@ void main() {
 
     expect(find.text('Aún no se procesaron PDFs'), findsOneWidget);
     expect(find.text('review_doc.pdf'), findsNothing);
+    expect(find.text('orden_999.pdf'), findsNothing);
     expect(appState.snapshot.sessionDocuments, isEmpty);
-    expect(appState.persistedOrders, isNotEmpty);
+    expect(appState.persistedOrders, isEmpty);
   });
 }
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.application.services import OrderValidationService, RouteResolver
 from app.application.use_cases import (
+    ClearDevelopmentOrders,
     CreateOrder,
     GetOrder,
     ListOrders,
@@ -87,6 +88,14 @@ def get_validate_order(orders=Depends(get_order_repository)) -> ValidateOrder:
     return ValidateOrder(orders)
 
 
+def get_clear_development_orders(orders=Depends(get_order_repository)) -> ClearDevelopmentOrders:
+    """Provide the ClearDevelopmentOrders use case.
+
+    Development-only cleanup: deletes persisted orders, never the schema.
+    """
+    return ClearDevelopmentOrders(orders)
+
+
 def get_reader() -> PdfplumberPDFReader:
     """Provide the PDF reader (stateless singleton)."""
     return _reader
@@ -141,6 +150,7 @@ def get_process_purchase_order(
 
 
 __all__ = [
+    "get_clear_development_orders",
     "get_create_order",
     "get_customer_matcher",
     "get_customer_repository",

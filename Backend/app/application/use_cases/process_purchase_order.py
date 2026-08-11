@@ -129,6 +129,7 @@ class ProcessPurchaseOrder:
             items=document.items,
             delivery_date=document.delivery_date,
             order_number=document.order_number,
+            source_filename=filename,
         )
 
         order = None

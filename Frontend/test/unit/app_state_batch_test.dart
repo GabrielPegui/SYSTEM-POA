@@ -10,13 +10,25 @@ import 'package:purchase_order_frontend/core/state/app_state.dart';
 
 /// Servicio fake que permite controlar el resultado de cada archivo procesado.
 class StubOrdersApiService extends OrdersApiService {
-  StubOrdersApiService(this._handler);
+  StubOrdersApiService(this._handler, {this._persistedOrders = const []});
 
   final Future<ProcessedDocumentView> Function(String filename) _handler;
+  final List<OrderListView> _persistedOrders;
+
+  /// Número de llamadas al endpoint de limpieza del backend.
+  int clearCalls = 0;
+
+  /// Cuando es true, la limpieza del backend falla.
+  bool failClear = false;
 
   @override
   Future<OverviewSnapshot> loadOverview() async {
-    return OverviewSnapshot.empty;
+    return OverviewSnapshot(
+      persistedOrders: _persistedOrders,
+      sessionDocuments: const <ProcessedDocumentView>[],
+      usingDemoData: false,
+      bannerMessage: '',
+    );
   }
 
   @override
@@ -30,6 +42,14 @@ class StubOrdersApiService extends OrdersApiService {
   @override
   Future<ProcessedDocumentView> processPdfPath(String path) {
     return _handler(path);
+  }
+
+  @override
+  Future<void> clearPersistedOrders() async {
+    clearCalls++;
+    if (failClear) {
+      throw const UnknownFailure('Servidor no disponible');
+    }
   }
 }
 
@@ -232,6 +252,61 @@ void main() {
       expect(state.snapshot.sessionDocuments, isEmpty);
       expect(state.selectedDocument, isNull);
       expect(state.batchSummary, isNull);
+    });
+
+    test('clearData empties session and persisted orders and notifies the backend',
+        () async {
+      final service = StubOrdersApiService(
+        (filename) async => _doc(filename, OrderProcessingStatus.processed),
+        persistedOrders: const [
+          OrderListView(
+            id: 1,
+            orderNumber: '4117171895',
+            customerName: 'JUMBO HIGUEY',
+            routeCode: 'PPN403',
+            deliveryDate: null,
+            status: 'processed',
+            sourceFilename: 'jumbo_higuey.pdf',
+            items: [],
+          ),
+        ],
+      );
+      final state = AppState(service: service);
+
+      await state.loadOverview();
+      await state.processFiles([
+        PlatformFile(name: 'a.pdf', size: 1, bytes: Uint8List.fromList([1])),
+      ]);
+
+      expect(state.persistedOrders, hasLength(1));
+      expect(state.documents, isNotEmpty);
+
+      await state.clearData();
+
+      expect(state.persistedOrders, isEmpty);
+      expect(state.documents, isEmpty);
+      expect(state.snapshot.sessionDocuments, isEmpty);
+      expect(state.selectedDocument, isNull);
+      expect(service.clearCalls, 1);
+    });
+
+    test('clearData clears local state even if the backend cleanup fails', () async {
+      final service = StubOrdersApiService(
+        (filename) async => _doc(filename, OrderProcessingStatus.processed),
+      )..failClear = true;
+      final state = AppState(service: service);
+
+      await state.processFiles([
+        PlatformFile(name: 'a.pdf', size: 1, bytes: Uint8List.fromList([1])),
+      ]);
+      expect(state.documents, hasLength(1));
+
+      await state.clearData();
+
+      expect(state.documents, isEmpty);
+      expect(state.persistedOrders, isEmpty);
+      expect(state.errorMessage, contains('servidor'));
+      expect(service.clearCalls, 1);
     });
   });
 }

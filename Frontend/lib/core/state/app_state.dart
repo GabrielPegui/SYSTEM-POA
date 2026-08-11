@@ -418,6 +418,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Vacía la sesión completa Y las órdenes persistidas del backend.
+  ///
+  /// Quita los documentos importados, la selección y el resumen de lote, y
+  /// además solicita al backend eliminar las órdenes persistidas (canal de
+  /// desarrollo ``DELETE /orders/development``). El estado local se deja
+  /// vacío siempre; si el servidor no responde se informa el error y las
+  /// órdenes persistidas reaparecerán en la próxima [loadOverview].
+  Future<void> clearData() async {
+    _snapshot = OverviewSnapshot.empty;
+    _selectedDocument = null;
+    _batchSummary = null;
+    _batchTotal = 0;
+    _batchDone = 0;
+    _draftPath = '';
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _service.clearPersistedOrders();
+      _lastSyncAt = DateTime.now();
+    } catch (error) {
+      _errorMessage = 'No se pudieron eliminar las órdenes del servidor: $error';
+      notifyListeners();
+    }
+  }
+
   static String _friendlyError(Object error) {
     return error.toString().replaceFirst('Exception: ', '');
   }

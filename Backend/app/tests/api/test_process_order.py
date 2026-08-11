@@ -12,10 +12,10 @@ is preserved as ``source_filename``.
 
 from pathlib import Path
 
-from app.api.deps import get_process_purchase_order
+from app.api.deps import get_list_orders, get_process_purchase_order
 from app.application.services.order_validation import OrderValidationService
 from app.application.services.route_resolution import RouteResolver
-from app.application.use_cases import ProcessPurchaseOrder
+from app.application.use_cases import ListOrders, ProcessPurchaseOrder
 from app.core.config import settings
 from app.domain.entities import Customer, Route
 from app.infrastructure.document_processing.detector import DocumentDetector
@@ -33,7 +33,10 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 SAMPLES_DIR = REPO_ROOT / "docs" / "samples"
 
 
-def _build_process_use_case(customers: list[Customer]) -> ProcessPurchaseOrder:
+def _build_process_use_case(
+    customers: list[Customer],
+    orders: InMemoryOrderRepository | None = None,
+) -> ProcessPurchaseOrder:
     reader = PdfplumberPDFReader()
     detector = DocumentDetector(signatures=DEFAULT_SIGNATURES)
     return ProcessPurchaseOrder(
@@ -43,7 +46,7 @@ def _build_process_use_case(customers: list[Customer]) -> ProcessPurchaseOrder:
         customer_matcher=CatalogCustomerMatcher(InMemoryCustomerRepository(customers)),
         route_resolver=RouteResolver(),
         validator=OrderValidationService(),
-        orders=InMemoryOrderRepository(),
+        orders=orders or InMemoryOrderRepository(),
         history=InMemoryProcessingHistoryRepository(),
     )
 
@@ -127,10 +130,10 @@ def test_process_hilton_document_matches_westpark_account(client) -> None:
         ]
     )
 
-    pdf_bytes = (SAMPLES_DIR / "BOLIN 4012234.pdf").read_bytes()
+    pdf_bytes = (SAMPLES_DIR / "OPERADORA WESTPARK, SAS.pdf").read_bytes()
     response = client.post(
         "/orders/process",
-        files={"file": ("BOLIN 4012234.pdf", pdf_bytes, "application/pdf")},
+        files={"file": ("OPERADORA WESTPARK, SAS.pdf", pdf_bytes, "application/pdf")},
     )
 
     assert response.status_code == 200
@@ -181,3 +184,51 @@ def test_process_oversized_file_is_rejected(client, monkeypatch) -> None:
     assert response.status_code == 413
     body = response.json()
     assert "maximum allowed size" in body["detail"]
+
+
+def _process_mercadal(client, orders, filename="mercadal.pdf"):
+    client.app.dependency_overrides[get_process_purchase_order] = lambda: _build_process_use_case(
+        _seeded_customers(), orders
+    )
+    client.app.dependency_overrides[get_list_orders] = lambda: ListOrders(orders)
+    pdf_bytes = (SAMPLES_DIR / "mercadal.pdf").read_bytes()
+    return client.post(
+        "/orders/process",
+        files={"file": (filename, pdf_bytes, "application/pdf")},
+    )
+
+
+def test_process_same_filename_replace_updates_one_order(client) -> None:
+    """Re-processing the exact same file name replaces the persisted order."""
+    orders = InMemoryOrderRepository()
+
+    first = _process_mercadal(client, orders)
+    second = _process_mercadal(client, orders)
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["status"] == "processed"
+    assert second.json()["status"] == "processed"
+
+    listing = client.get("/orders")
+    assert listing.status_code == 200
+    body = listing.json()
+    assert len(body) == 1
+    assert body[0]["source_filename"] == "mercadal.pdf"
+    assert body[0]["order_number"] == "4000326758"
+    assert len(body[0]["items"]) == 10
+
+
+def test_process_different_filenames_create_distinct_orders(client) -> None:
+    """Same content but a different file name is a different document."""
+    orders = InMemoryOrderRepository()
+
+    first = _process_mercadal(client, orders, filename="mercadal.pdf")
+    second = _process_mercadal(client, orders, filename="copia_mercadal.pdf")
+
+    assert first.status_code == 200 and second.status_code == 200
+
+    listing = client.get("/orders")
+    body = listing.json()
+    assert len(body) == 2
+    filenames = {item["source_filename"] for item in body}
+    assert filenames == {"mercadal.pdf", "copia_mercadal.pdf"}
