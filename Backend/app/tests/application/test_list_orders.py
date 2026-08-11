@@ -26,4 +26,4 @@ def test_list_orders_returns_domain_orders(order_repo, order, list_orders: ListO
     result = list_orders.execute()
 
     assert result[0].order_number == order.order_number
-    assert result[0].customer.code == order.customer.code
+    assert result[0].customer.name == order.customer.name

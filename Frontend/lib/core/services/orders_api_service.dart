@@ -90,32 +90,30 @@ class OrdersApiService {
       OrderListView(
         id: 1,
         orderNumber: '4117171895',
-        customerCode: 'CL000002-009',
         customerName: 'JUMBO HIGUEY',
         routeCode: 'PPN403',
         deliveryDate: DateTime(2026, 8, 12),
         status: 'processed',
         items: const [
           OrderItemView(
-            productCode: '02010101',
-            productDescription: 'PEPIN PAN HOT DOG 8/1',
+            description: 'PEPIN PAN HOT DOG 8/1',
             quantity: 27,
+            pdfCode: '7461012345670',
           ),
         ],
       ),
       OrderListView(
         id: 2,
         orderNumber: '3846637',
-        customerCode: 'CL001686',
         customerName: 'OPERADORA WESTPARK, SAS',
         routeCode: 'PPN001',
         deliveryDate: DateTime(2026, 8, 11),
         status: 'processed',
         items: const [
           OrderItemView(
-            productCode: '01010101',
-            productDescription: 'PEPIN VIGA MEDIANA BLANCO',
+            description: 'PEPIN VIGA MEDIANA BLANCO',
             quantity: 180,
+            pdfCode: '7461012345687',
           ),
         ],
       ),
@@ -123,9 +121,54 @@ class OrdersApiService {
 
     return OverviewSnapshot(
       persistedOrders: persistedOrders,
-      sessionDocuments: const <ProcessedDocumentView>[],
+      sessionDocuments: _demoSessionDocuments,
       usingDemoData: true,
       bannerMessage: message,
     );
   }
+
+  /// Documentos de demostración que ilustran la consolidación Ruta + Fecha.
+  ///
+  /// Ruta 200 con entrega 12/08/2026: CLIENTE A pide Pan 20 / Queso 10 / Limón
+  /// 5 y CLIENTE B pide Pan 20 / Queso 15, dejando totales Pan 40, Queso 25,
+  /// Limón 5 y un total general de 70 unidades.
+  static final List<ProcessedDocumentView> _demoSessionDocuments = [
+    ProcessedDocumentView(
+      sourceFilename: 'ruta_200_12ago_cliente_a.pdf',
+      parserId: 'demo',
+      documentType: 'purchase_order',
+      status: OrderProcessingStatus.processed,
+      orderNumber: 'DEMO-A-200',
+      customerCode: 'CL-A',
+      customerName: 'CLIENTE A',
+      routeCode: '200',
+      deliveryDate: DateTime(2026, 8, 12),
+      routeReason: 'Ruta por defecto del cliente',
+      reasons: const [],
+      items: const [
+        OrderLineView(description: 'PAN PEPIN 24/1', quantity: 20, pdfCode: '750101010001'),
+        OrderLineView(description: 'QUESO CREMA 500G', quantity: 10, pdfCode: '750101010002'),
+        OrderLineView(description: 'LIMON DE MESA', quantity: 5, pdfCode: '750101010003'),
+      ],
+      receivedAt: DateTime(2026, 8, 10, 9, 15),
+    ),
+    ProcessedDocumentView(
+      sourceFilename: 'ruta_200_12ago_cliente_b.pdf',
+      parserId: 'demo',
+      documentType: 'purchase_order',
+      status: OrderProcessingStatus.processed,
+      orderNumber: 'DEMO-B-200',
+      customerCode: 'CL-B',
+      customerName: 'CLIENTE B',
+      routeCode: '200',
+      deliveryDate: DateTime(2026, 8, 12),
+      routeReason: 'Ruta por defecto del cliente',
+      reasons: const [],
+      items: const [
+        OrderLineView(description: 'PAN PEPIN 24/1', quantity: 20, pdfCode: '750101010004'),
+        OrderLineView(description: 'QUESO CREMA 500G', quantity: 15, pdfCode: '750101010005'),
+      ],
+      receivedAt: DateTime(2026, 8, 10, 9, 18),
+    ),
+  ];
 }

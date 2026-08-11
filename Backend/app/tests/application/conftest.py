@@ -9,11 +9,10 @@ import pytest
 
 from app.application.commands import CreateOrderCommand, CreateOrderItemCommand
 from app.application.use_cases import CreateOrder, GetOrder, ListOrders, ValidateOrder
-from app.domain.entities import Customer, Order, OrderItem, Product, Route
+from app.domain.entities import Customer, Order, OrderItem, Route
 from app.tests.application.fakes import (
     InMemoryCustomerRepository,
     InMemoryOrderRepository,
-    InMemoryProductRepository,
     InMemoryRouteRepository,
 )
 
@@ -25,17 +24,14 @@ def route() -> Route:
 
 @pytest.fixture
 def customer(route: Route) -> Customer:
-    return Customer(code="CL000168", name="JASON FAST FOOD", route=route)
+    return Customer(
+        name="JASON FAST FOOD", route=route, address="Av. 27 de Febrero 200"
+    )
 
 
 @pytest.fixture
-def product() -> Product:
-    return Product(code="01010101", description="VIGA MEDIANA BLANCO PEPIN")
-
-
-@pytest.fixture
-def order_item(product: Product) -> OrderItem:
-    return OrderItem(product=product, quantity=6)
+def order_item() -> OrderItem:
+    return OrderItem(description="VIGA MEDIANA BLANCO PEPIN", quantity=6)
 
 
 @pytest.fixture
@@ -59,11 +55,6 @@ def customer_repo(customer: Customer) -> InMemoryCustomerRepository:
 
 
 @pytest.fixture
-def product_repo(product: Product) -> InMemoryProductRepository:
-    return InMemoryProductRepository([product])
-
-
-@pytest.fixture
 def order_repo() -> InMemoryOrderRepository:
     return InMemoryOrderRepository()
 
@@ -71,11 +62,9 @@ def order_repo() -> InMemoryOrderRepository:
 @pytest.fixture
 def create_order(
     customer_repo: InMemoryCustomerRepository,
-    route_repo: InMemoryRouteRepository,
-    product_repo: InMemoryProductRepository,
     order_repo: InMemoryOrderRepository,
 ) -> CreateOrder:
-    return CreateOrder(customer_repo, route_repo, product_repo, order_repo)
+    return CreateOrder(customer_repo, order_repo)
 
 
 @pytest.fixture
@@ -98,7 +87,7 @@ def create_order_command(order: Order) -> CreateOrderCommand:
     item = order.items[0]
     return CreateOrderCommand(
         order_number=order.order_number,
-        customer_code=order.customer.code,
+        customer_name=order.customer.name,
         delivery_date=order.delivery_date,
-        items=(CreateOrderItemCommand(product_code=item.product.code, quantity=item.quantity),),
+        items=(CreateOrderItemCommand(description=item.description, quantity=item.quantity),),
     )

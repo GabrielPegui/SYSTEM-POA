@@ -48,7 +48,7 @@ class OrderProcessingPage extends StatelessWidget {
             const SizedBox(height: 16),
             LayoutBuilder(
               builder: (context, constraints) {
-                final metricsCount = constraints.maxWidth >= 1000 ? 4 : 2;
+                final metricsCount = constraints.maxWidth >= 700 ? 3 : 1;
                 return GridView.count(
                   crossAxisCount: metricsCount,
                   crossAxisSpacing: 16,
@@ -58,13 +58,6 @@ class OrderProcessingPage extends StatelessWidget {
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
                     MetricTile(
-                      label: 'Órdenes recibidas',
-                      value: state.snapshot.totalIncoming.toString(),
-                      icon: Icons.inbox_rounded,
-                      tint: const Color(0xFFC8911E),
-                      delta: state.usingDemoData ? 'Demo local' : 'Datos cargados',
-                    ),
-                    MetricTile(
                       label: 'Procesadas',
                       value: state.snapshot.processedCount.toString(),
                       icon: Icons.check_circle_rounded,
@@ -72,15 +65,19 @@ class OrderProcessingPage extends StatelessWidget {
                     ),
                     MetricTile(
                       label: 'Requieren revisión',
-                      value: state.snapshot.reviewRequiredCount.toString(),
+                      value: (state.snapshot.reviewRequiredCount +
+                              state.snapshot.noMatchCount +
+                              state.snapshot.errorCount)
+                          .toString(),
                       icon: Icons.rule_rounded,
                       tint: const Color(0xFF9A6A00),
                     ),
                     MetricTile(
-                      label: 'Errores',
-                      value: state.snapshot.errorCount.toString(),
-                      icon: Icons.error_rounded,
+                      label: 'Total de la sesión',
+                      value: state.snapshot.totalIncoming.toString(),
+                      icon: Icons.inbox_rounded,
                       tint: const Color(0xFFE52421),
+                      delta: state.usingDemoData ? 'Demo local' : 'Datos cargados',
                     ),
                   ],
                 );
@@ -171,11 +168,10 @@ class OrderProcessingPage extends StatelessWidget {
                       columns: const [
                         DataColumn(label: Text('Cliente')),
                         DataColumn(label: Text('Ruta')),
-                        DataColumn(label: Text('Productos')),
-                        DataColumn(label: Text('Cantidad')),
-                        DataColumn(label: Text('Entrega')),
+                        DataColumn(label: Text('Productos / Cantidad')),
+                        DataColumn(label: Text('Fecha de entrega')),
                         DataColumn(label: Text('Estado')),
-                        DataColumn(label: Text('Archivo')),
+                        DataColumn(label: Text('Acción')),
                       ],
                       rows: [
                         for (final document in state.documents)
@@ -187,19 +183,42 @@ class OrderProcessingPage extends StatelessWidget {
                             cells: [
                               DataCell(Text(document.customerName ?? document.customerCode ?? '-')),
                               DataCell(Text(document.routeCode ?? '-')),
-                              DataCell(Text(_productsLabel(document))),
-                              DataCell(Text(_totalQuantity(document).toString())),
+                              DataCell(
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      _productsLabel(document),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                    ),
+                                    Text(
+                                      '${_totalQuantity(document)} unidades',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+                                    ),
+                                  ],
+                                ),
+                              ),
                               DataCell(Text(
                                 document.deliveryDate == null
                                     ? '-'
                                     : MaterialLocalizations.of(context).formatShortDate(document.deliveryDate!),
                               )),
                               DataCell(StatusPill(status: document.status)),
-                              DataCell(Text(
-                                document.sourceFilename,
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              )),
+                              DataCell(
+                                TextButton.icon(
+                                  onPressed: () {
+                                    state.selectDocument(document);
+                                    context.push(AppRoutes.validation);
+                                  },
+                                  icon: const Icon(Icons.edit_note_rounded, size: 18),
+                                  label: Text(
+                                    document.status == OrderProcessingStatus.processed ? 'Ver' : 'Revisar',
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                       ],
@@ -215,7 +234,7 @@ class OrderProcessingPage extends StatelessWidget {
     if (document.items.isEmpty) {
       return '-';
     }
-    final first = document.items.first.productDescription ?? document.items.first.description;
+    final first = document.items.first.description;
     final count = document.items.length;
     return count == 1 ? first : '$first (+${count - 1})';
   }

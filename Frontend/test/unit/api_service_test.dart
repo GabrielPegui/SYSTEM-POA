@@ -52,16 +52,15 @@ void main() {
           {
             'id': 10,
             'order_number': '4117171895',
-            'customer_code': 'CL000002',
             'customer_name': 'JUMBO HIGUEY',
             'route_code': 'PPN403',
             'delivery_date': '2026-08-12',
             'status': 'processed',
             'items': [
               {
-                'product_code': '02010101',
-                'product_description': 'PEPIN PAN HOT DOG 8/1',
+                'description': 'PEPIN PAN HOT DOG 8/1',
                 'quantity': 27,
+                'pdf_code': '7461012345670',
               }
             ],
           }
@@ -76,6 +75,7 @@ void main() {
       expect(snapshot.persistedOrders, hasLength(1));
       expect(snapshot.persistedOrders.first.orderNumber, '4117171895');
       expect(snapshot.persistedOrders.first.customerName, 'JUMBO HIGUEY');
+      expect(snapshot.persistedOrders.first.items.single.description, 'PEPIN PAN HOT DOG 8/1');
     });
 
     test('loadOverview falls back to demo snapshot on network error', () async {
@@ -88,6 +88,8 @@ void main() {
 
       expect(snapshot.usingDemoData, isTrue);
       expect(snapshot.persistedOrders, isNotEmpty);
+      expect(snapshot.sessionDocuments, isNotEmpty);
+      expect(snapshot.documents.any((doc) => doc.routeCode == '200'), isTrue);
     });
 
     test('validateOrder hits the validate endpoint without a body', () async {

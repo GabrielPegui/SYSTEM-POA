@@ -1,24 +1,20 @@
 """Route resolution for a processed purchase order.
 
-The documented business rule is *one customer = one route* (1:1). The route of
-a resolved customer is therefore the route of the order.
+The documented business rule is *one customer = one route* (1:1) within the
+definitive catalog (``CLIENTES POR RUTA.xlsx``): a route is an aggregation of
+customers and every customer row belongs to exactly one route. The route of a
+resolved customer is therefore the route of the order.
 
-Known exception (documented in ``docs/ANALISIS_DATOS_MVP.md``): the source
-catalog lists account ``CL001062`` (SURTIDORA BENERITO) on two routes (PPN000
-and PPN403). This is pending business confirmation, so instead of silently
-picking one route the resolver reports the ambiguity and the order goes to
-``REVIEW_REQUIRED``. The list of ambiguous codes is a small, documented,
-data-quality guard, not format-selection logic (ADR-002 applies to parser
-selection, not to this data concern).
+Ambiguity is handled by the customer matcher: a name shared by two catalog
+customers (e.g. ``INVERSIONES LLERS`` on PPN303 and PPN601) is never resolved
+here as a route; it is reported as REVIEW_REQUIRED before reaching this
+service, so no route is silently invented.
 """
 
 from dataclasses import dataclass
 
 from app.domain.document_processing.matching import CustomerMatchResult, MatchOutcome
 from app.domain.entities import Route
-
-#: Accounts whose source data is ambiguous (pending business confirmation).
-AMBIGUOUS_ROUTE_CODES: frozenset[str] = frozenset({"CL001062"})
 
 
 @dataclass(frozen=True)
@@ -45,10 +41,4 @@ class RouteResolver:
             return RouteResolution(None, customer_match.reason)
         customer = customer_match.matched_customer
         assert customer is not None
-        if customer.code in AMBIGUOUS_ROUTE_CODES:
-            return RouteResolution(
-                None,
-                f"{customer.name} ({customer.code}) has two routes in the source data "
-                "(PPN000, PPN403); pending business confirmation",
-            )
         return RouteResolution(customer.route)

@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from app.domain.entities import Customer, Order, OrderItem, Product, Route
+from app.domain.entities import Customer, Order, OrderItem, Route
 
 
 @pytest.fixture
@@ -14,17 +14,14 @@ def route() -> Route:
 
 @pytest.fixture
 def customer(route: Route) -> Customer:
-    return Customer(code="CL000168", name="JASON FAST FOOD", route=route)
+    return Customer(
+        name="JASON FAST FOOD", route=route, address="Av. 27 de Febrero 200"
+    )
 
 
 @pytest.fixture
-def product() -> Product:
-    return Product(code="01010101", description="VIGA MEDIANA BLANCO PEPIN")
-
-
-@pytest.fixture
-def order_item(product: Product) -> OrderItem:
-    return OrderItem(product=product, quantity=6)
+def order_item() -> OrderItem:
+    return OrderItem(description="VIGA MEDIANA BLANCO PEPIN", quantity=6)
 
 
 @pytest.fixture

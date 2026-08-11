@@ -1,10 +1,14 @@
 """Validation gate before persisting a processed purchase order.
 
 The gate decides the overall ``ProcessingStatus`` from the resolved customer,
-route and per-item matches, and only builds a domain ``Order`` when every
+route and extracted header data, and only builds a domain ``Order`` when every
 reference is conclusive. Nothing is persisted on REVIEW_REQUIRED / NO_MATCH /
 ERROR (ADR-003: matching first, persistence after; never create catalog
 entities implicitly).
+
+Product lines are not validated here: with the definitive model the lines keep
+the description as printed in the PDF and there is no product catalog to match
+against (only presence of extracted items is required).
 """
 
 from dataclasses import dataclass
@@ -12,10 +16,8 @@ from datetime import date
 
 from app.application.services.route_resolution import RouteResolution
 from app.domain.document_processing.matching import CustomerMatchResult, MatchOutcome
-from app.domain.document_processing.processing import (
-    ProcessedItemResult,
-    ProcessingStatus,
-)
+from app.domain.document_processing.processing import ProcessingStatus
+from app.domain.document_processing.purchase_order import PurchaseOrderItemDocument
 from app.domain.entities import Order, OrderItem
 
 
@@ -41,7 +43,7 @@ class OrderValidationService:
         *,
         customer_match: CustomerMatchResult | None,
         route_resolution: RouteResolution,
-        item_results: tuple[ProcessedItemResult, ...],
+        items: tuple[PurchaseOrderItemDocument, ...],
         delivery_date: date | None,
         order_number: str | None,
     ) -> ValidationDecision:
@@ -64,18 +66,9 @@ class OrderValidationService:
         if delivery_date is None:
             has_review = True
             reasons.append("Delivery date is missing")
-        if not item_results:
+        if not items:
             has_review = True
             reasons.append("No items were extracted from the document")
-
-        for result in item_results:
-            match = result.match
-            if match.outcome is MatchOutcome.NO_MATCH:
-                has_no_match = True
-                reasons.append(f"Item '{result.item.description}': {match.reason}")
-            elif match.outcome is MatchOutcome.REVIEW_REQUIRED:
-                has_review = True
-                reasons.append(f"Item '{result.item.description}': {match.reason}")
 
         if has_no_match:
             status = ProcessingStatus.NO_MATCH
@@ -85,7 +78,7 @@ class OrderValidationService:
             status = ProcessingStatus.PROCESSED
 
         order = (
-            self._build_order(order_number, customer_match, item_results, delivery_date)
+            self._build_order(order_number, customer_match, items, delivery_date)
             if status is ProcessingStatus.PROCESSED
             else None
         )
@@ -95,20 +88,23 @@ class OrderValidationService:
     def _build_order(
         order_number: str | None,
         customer_match: CustomerMatchResult,
-        item_results: tuple[ProcessedItemResult, ...],
+        items: tuple[PurchaseOrderItemDocument, ...],
         delivery_date: date | None,
     ) -> Order:
         assert customer_match.matched_customer is not None
         assert order_number is not None
         assert delivery_date is not None
-        items = tuple(
-            OrderItem(product=result.match.matched_product, quantity=result.item.quantity)
-            for result in item_results
-            if result.match.matched_product is not None
-        )
         return Order(
             order_number=order_number,
             customer=customer_match.matched_customer,
             delivery_date=delivery_date,
-            items=items,
+            items=tuple(
+                OrderItem(
+                    description=item.description,
+                    quantity=item.quantity,
+                    pdf_code=item.pdf_code,
+                    ean=item.ean,
+                )
+                for item in items
+            ),
         )

@@ -50,55 +50,39 @@ extension OrderProcessingStatusX on OrderProcessingStatus {
   }
 }
 
+/// A single line of an order as printed in the PDF.
+///
+/// Definitive model (Pre-Sprint 9): there is no product catalog; the line
+/// carries the product [description] exactly as printed plus [pdfCode]/[ean]
+/// as traceability only.
 class OrderLineView {
   const OrderLineView({
     required this.description,
     required this.quantity,
-    required this.matchStatus,
-    this.productCode,
-    this.productDescription,
     this.pdfCode,
-    this.confidence,
-    this.reason,
-    this.candidates = const <String>[],
+    this.ean,
   });
 
   final String description;
   final int quantity;
-  final String matchStatus;
-  final String? productCode;
-  final String? productDescription;
   final String? pdfCode;
-  final double? confidence;
-  final String? reason;
-  final List<String> candidates;
+  final String? ean;
 
   factory OrderLineView.fromProcessedJson(Map<String, dynamic> json) {
     return OrderLineView(
       description: json['description'] as String? ?? '',
       quantity: (json['quantity'] as num?)?.toInt() ?? 0,
       pdfCode: json['pdf_code'] as String?,
-      matchStatus: json['match_status'] as String? ?? 'unknown',
-      productCode: json['product_code'] as String?,
-      productDescription: json['product_description'] as String?,
-      confidence: (json['confidence'] as num?)?.toDouble(),
-      reason: json['reason'] as String?,
-      candidates: [
-        for (final candidate in (json['candidates'] as List<dynamic>? ?? const []))
-          candidate is Map<String, dynamic>
-              ? '${candidate['code'] ?? ''} ${candidate['description'] ?? ''}'.trim()
-              : candidate.toString(),
-      ],
+      ean: json['ean'] as String?,
     );
   }
 
   factory OrderLineView.fromOrderJson(Map<String, dynamic> json) {
     return OrderLineView(
-      description: json['product_description'] as String? ?? '',
+      description: json['description'] as String? ?? '',
       quantity: (json['quantity'] as num?)?.toInt() ?? 0,
-      matchStatus: 'matched',
-      productCode: json['product_code'] as String?,
-      productDescription: json['product_description'] as String?,
+      pdfCode: json['pdf_code'] as String?,
+      ean: json['ean'] as String?,
     );
   }
 }
@@ -167,7 +151,7 @@ class ProcessedDocumentView {
       documentType: 'order',
       status: OrderProcessingStatus.processed,
       orderNumber: order.orderNumber,
-      customerCode: order.customerCode,
+      customerCode: null,
       customerName: order.customerName,
       routeCode: order.routeCode,
       deliveryDate: order.deliveryDate,
@@ -183,20 +167,23 @@ class ProcessedDocumentView {
 
 class OrderItemView {
   const OrderItemView({
-    required this.productCode,
-    required this.productDescription,
+    required this.description,
     required this.quantity,
+    this.pdfCode,
+    this.ean,
   });
 
-  final String productCode;
-  final String productDescription;
+  final String description;
   final int quantity;
+  final String? pdfCode;
+  final String? ean;
 
   Map<String, dynamic> toJson() {
     return {
-      'product_code': productCode,
-      'product_description': productDescription,
+      'description': description,
       'quantity': quantity,
+      'pdf_code': pdfCode,
+      'ean': ean,
     };
   }
 }
@@ -205,7 +192,6 @@ class OrderListView {
   const OrderListView({
     required this.id,
     required this.orderNumber,
-    required this.customerCode,
     required this.customerName,
     required this.routeCode,
     required this.deliveryDate,
@@ -215,7 +201,6 @@ class OrderListView {
 
   final int id;
   final String orderNumber;
-  final String customerCode;
   final String customerName;
   final String routeCode;
   final DateTime? deliveryDate;
@@ -226,7 +211,6 @@ class OrderListView {
     return OrderListView(
       id: (json['id'] as num?)?.toInt() ?? 0,
       orderNumber: json['order_number'] as String? ?? '',
-      customerCode: json['customer_code'] as String? ?? '',
       customerName: json['customer_name'] as String? ?? '',
       routeCode: json['route_code'] as String? ?? '',
       deliveryDate: DateTime.tryParse(json['delivery_date'] as String? ?? ''),
@@ -234,9 +218,10 @@ class OrderListView {
       items: [
         for (final item in (json['items'] as List<dynamic>? ?? const []))
           OrderItemView(
-            productCode: (item as Map<String, dynamic>)['product_code'] as String? ?? '',
-            productDescription: item['product_description'] as String? ?? '',
+            description: (item as Map<String, dynamic>)['description'] as String? ?? '',
             quantity: (item['quantity'] as num?)?.toInt() ?? 0,
+            pdfCode: item['pdf_code'] as String?,
+            ean: item['ean'] as String?,
           ),
       ],
     );
@@ -303,21 +288,20 @@ class OverviewSnapshot {
     final map = <String, ConsolidatedProductView>{};
     for (final doc in documents.where((doc) => doc.status == OrderProcessingStatus.processed)) {
       for (final item in doc.items) {
-        final key = item.productCode?.isNotEmpty == true
-            ? item.productCode!
-            : (item.productDescription ?? item.description).toLowerCase();
+        final label = item.description.isNotEmpty ? item.description : 'Producto sin nombre';
+        final key = label.toLowerCase();
         final existing = map[key];
         final breakdown = OrderBreakdownView(
           customerLabel: doc.customerName ?? doc.customerCode ?? 'Sin cliente',
           routeLabel: doc.routeCode ?? 'Sin ruta',
           quantity: item.quantity,
           deliveryDate: doc.deliveryDate,
-          productLabel: item.productDescription ?? item.description,
+          productLabel: label,
         );
         if (existing == null) {
           map[key] = ConsolidatedProductView(
             productKey: key,
-            productLabel: item.productDescription ?? (item.description.isNotEmpty ? item.description : key),
+            productLabel: label,
             totalQuantity: item.quantity,
             customers: <String>{breakdown.customerLabel},
             routes: <String>{breakdown.routeLabel},
@@ -352,7 +336,7 @@ class OverviewSnapshot {
       for (final item in doc.items) {
         entity.totalQuantity += item.quantity;
         entity.routes.add(doc.routeCode ?? 'Sin ruta');
-        final prodLabel = item.productDescription ?? (item.description.isNotEmpty ? item.description : 'Producto sin nombre');
+        final prodLabel = item.description.isNotEmpty ? item.description : 'Producto sin nombre';
         entity.products.add(prodLabel);
         entity.lines.add(
           OrderBreakdownView(
@@ -382,7 +366,7 @@ class OverviewSnapshot {
       for (final item in doc.items) {
         entity.totalQuantity += item.quantity;
         entity.customers.add(doc.customerName ?? doc.customerCode ?? 'Sin cliente');
-        final prodLabel = item.productDescription ?? (item.description.isNotEmpty ? item.description : 'Producto sin nombre');
+        final prodLabel = item.description.isNotEmpty ? item.description : 'Producto sin nombre';
         entity.products.add(prodLabel);
         entity.lines.add(
           OrderBreakdownView(
@@ -398,35 +382,40 @@ class OverviewSnapshot {
     return map;
   }
 
-  Map<String, ConsolidatedEntityView> consolidateByDate() {
-    final map = <String, ConsolidatedEntityView>{};
+  /// Consolidación definitiva por Ruta + Fecha de entrega.
+  ///
+  /// Agrupa las órdenes procesadas por la combinación de ruta y fecha de
+  /// entrega; dentro de cada grupo desglosa por cliente y producto, y expone
+  /// los totales por producto y el total general del grupo.
+  List<RouteDateGroupView> consolidateByRouteAndDate() {
+    final groups = <String, RouteDateGroupView>{};
     for (final doc in documents.where((doc) => doc.status == OrderProcessingStatus.processed)) {
-      final key = doc.deliveryDate == null ? 'Sin fecha' : _dateLabel(doc.deliveryDate!);
-      final entity = map.putIfAbsent(
-        key,
-        () => ConsolidatedEntityView(
-          key: key,
-          label: key,
-        ),
+      final route = doc.routeCode ?? 'Sin ruta';
+      final date = doc.deliveryDate;
+      final dateKey = date == null ? 'Sin fecha' : _dateLabel(date);
+      final group = groups.putIfAbsent(
+        '$route|$dateKey',
+        () => RouteDateGroupView(routeCode: route, deliveryDate: date),
       );
-      for (final item in doc.items) {
-        entity.totalQuantity += item.quantity;
-        entity.customers.add(doc.customerName ?? doc.customerCode ?? 'Sin cliente');
-        entity.routes.add(doc.routeCode ?? 'Sin ruta');
-        final prodLabel = item.productDescription ?? (item.description.isNotEmpty ? item.description : 'Producto sin nombre');
-        entity.products.add(prodLabel);
-        entity.lines.add(
-          OrderBreakdownView(
-            customerLabel: doc.customerName ?? doc.customerCode ?? 'Sin cliente',
-            routeLabel: doc.routeCode ?? 'Sin ruta',
-            quantity: item.quantity,
-            deliveryDate: doc.deliveryDate,
-            productLabel: prodLabel,
-          ),
-        );
+      group.addDocument(
+        customerName: doc.customerName ?? doc.customerCode ?? 'Sin cliente',
+        items: doc.items,
+      );
+    }
+
+    final result = groups.values.toList()
+      ..sort((a, b) {
+        final dateCmp = (a.deliveryDate ?? DateTime(1)).compareTo(b.deliveryDate ?? DateTime(1));
+        if (dateCmp != 0) return dateCmp;
+        return a.routeCode.compareTo(b.routeCode);
+      });
+    for (final group in result) {
+      group.customers.sort((a, b) => b.totalQuantity.compareTo(a.totalQuantity));
+      for (final customer in group.customers) {
+        customer.productTotals.sort((a, b) => b.quantity.compareTo(a.quantity));
       }
     }
-    return map;
+    return result;
   }
 }
 
@@ -463,6 +452,105 @@ class ConsolidatedEntityView {
   final Set<String> routes = <String>{};
   final Set<String> products = <String>{};
   final List<OrderBreakdownView> lines = <OrderBreakdownView>[];
+}
+
+/// Grupo de consolidación por Ruta + Fecha de entrega.
+///
+/// Cada grupo reúne las órdenes procesadas de una misma ruta para una misma
+/// fecha de entrega, con su desglose por cliente y producto.
+class RouteDateGroupView {
+  RouteDateGroupView({required this.routeCode, required this.deliveryDate});
+
+  final String routeCode;
+  final DateTime? deliveryDate;
+  final List<RouteDateCustomerView> customers = <RouteDateCustomerView>[];
+
+  int get orderCount =>
+      customers.fold(0, (sum, customer) => sum + customer.orderCount);
+
+  int get totalQuantity =>
+      customers.fold(0, (sum, customer) => sum + customer.totalQuantity);
+
+  /// Total por producto sumando todos los clientes del grupo, de mayor a menor.
+  List<RouteDateProductTotal> get productTotals {
+    final map = <String, int>{};
+    for (final customer in customers) {
+      for (final product in customer.productTotals) {
+        map[product.productLabel] = (map[product.productLabel] ?? 0) + product.quantity;
+      }
+    }
+    return [
+      for (final entry in map.entries)
+        RouteDateProductTotal(productLabel: entry.key, quantity: entry.value),
+    ]..sort((a, b) => b.quantity.compareTo(a.quantity));
+  }
+
+  void addDocument({
+    required String customerName,
+    required List<OrderLineView> items,
+  }) {
+    var customer = _findCustomer(customerName);
+    if (customer == null) {
+      customer = RouteDateCustomerView(customerName: customerName);
+      customers.add(customer);
+    }
+    customer.addDocument(items);
+  }
+
+  RouteDateCustomerView? _findCustomer(String customerName) {
+    final normalized = customerName.toLowerCase();
+    for (final customer in customers) {
+      if (customer.customerName.toLowerCase() == normalized) {
+        return customer;
+      }
+    }
+    return null;
+  }
+}
+
+/// Un cliente dentro de un grupo Ruta + Fecha, con sus totales por producto.
+class RouteDateCustomerView {
+  RouteDateCustomerView({required this.customerName});
+
+  final String customerName;
+  final List<RouteDateProductTotal> productTotals = <RouteDateProductTotal>[];
+
+  /// Número de documentos de este cliente en el grupo.
+  int orderCount = 0;
+
+  int get totalQuantity =>
+      productTotals.fold(0, (sum, product) => sum + product.quantity);
+
+  void addDocument(List<OrderLineView> items) {
+    orderCount++;
+    for (final item in items) {
+      final label = item.description.isNotEmpty ? item.description : 'Producto sin nombre';
+      var product = _findProduct(label);
+      if (product == null) {
+        product = RouteDateProductTotal(productLabel: label, quantity: item.quantity);
+        productTotals.add(product);
+      } else {
+        product.quantity += item.quantity;
+      }
+    }
+  }
+
+  RouteDateProductTotal? _findProduct(String productLabel) {
+    for (final product in productTotals) {
+      if (product.productLabel == productLabel) {
+        return product;
+      }
+    }
+    return null;
+  }
+}
+
+/// Cantidad total de un producto dentro de un cliente o de un grupo.
+class RouteDateProductTotal {
+  RouteDateProductTotal({required this.productLabel, required this.quantity});
+
+  final String productLabel;
+  int quantity;
 }
 
 class OrderBreakdownView {

@@ -11,13 +11,13 @@ from app.infrastructure.document_processing.parsers.registry import (
 )
 
 SAMPLES = {
-    "4000326734.pdf": "mercadal_parser",
-    "4000326758.pdf": "mercadal_parser",
+    "OLE.pdf": "mercadal_parser",
+    "mercadal.pdf": "mercadal_parser",
     "BOLIN 4012234.pdf": "hilton_parser",
-    "CDE_1_2069_20260801075602_2.PDF": "cde_hyper_parser",
+    "carrefour.PDF": "cde_hyper_parser",
     "Orden de Pedido por e-mail.pdf": "jumbo_parser",
-    "pedido-03-08-2026-12653-bravo.pdf": "bravo_parser",
-    "Orden de Compra 4505261004.pdf": "plaza_lama_parser",
+    "bravo.pdf": "bravo_parser",
+    "plazalama.pdf": "plaza_lama_parser",
 }
 
 
@@ -37,7 +37,7 @@ def test_pipeline_detects_and_parses_sample(reader, detector, samples_dir, filen
 
 
 def test_mercadal_parses_first_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "4000326734.pdf")
+    raw = reader.read(samples_dir / "OLE.pdf")
     document = DEFAULT_PARSERS["mercadal_parser"].parse(raw)
     assert document.order_number == "4000326734"
     assert document.customer_code == "101532483"
@@ -53,7 +53,7 @@ def test_mercadal_parses_first_sample(reader, samples_dir):
 
 
 def test_mercadal_parses_second_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "4000326758.pdf")
+    raw = reader.read(samples_dir / "mercadal.pdf")
     document = DEFAULT_PARSERS["mercadal_parser"].parse(raw)
     assert document.order_number == "4000326758"
     assert document.customer_code == "131242172"
@@ -75,7 +75,7 @@ def test_hilton_parses_sample(reader, samples_dir):
 
 
 def test_cde_hyper_parses_multipage_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "CDE_1_2069_20260801075602_2.PDF")
+    raw = reader.read(samples_dir / "carrefour.PDF")
     assert raw.page_count == 2
     document = DEFAULT_PARSERS["cde_hyper_parser"].parse(raw)
     assert document.order_number == "15070619"
@@ -106,7 +106,7 @@ def test_jumbo_parses_sample(reader, samples_dir):
 
 
 def test_bravo_parses_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "pedido-03-08-2026-12653-bravo.pdf")
+    raw = reader.read(samples_dir / "bravo.pdf")
     document = DEFAULT_PARSERS["bravo_parser"].parse(raw)
     assert document.order_number == "3846637"
     assert len(document.items) == 1
@@ -119,7 +119,7 @@ def test_bravo_parses_sample(reader, samples_dir):
 
 
 def test_plaza_lama_parses_multipage_sample(reader, samples_dir):
-    raw = reader.read(samples_dir / "Orden de Compra 4505261004.pdf")
+    raw = reader.read(samples_dir / "plazalama.pdf")
     assert raw.page_count == 2
     document = DEFAULT_PARSERS["plaza_lama_parser"].parse(raw)
     assert document.order_number == "4505261004"

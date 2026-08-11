@@ -12,12 +12,30 @@ class ValidationPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
 
+    final customerOptions = <String>{
+      for (final doc in state.documents)
+        if (doc.customerName != null && doc.customerName!.trim().isNotEmpty) doc.customerName!,
+    }.toList()
+      ..sort();
+    final routeOptions = <String>{
+      for (final doc in state.documents)
+        if (doc.routeCode != null && doc.routeCode!.trim().isNotEmpty) doc.routeCode!,
+    }.toList()
+      ..sort();
+
     return AppPageShell(
-      title: 'Centro de revisión',
-      subtitle: 'Documentos que requieren atención operativa antes de consolidarse.',
+      title: 'Revisión de órdenes',
+      subtitle: 'Completa o corrige la información antes de enviar la orden a consolidación.',
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 900;
+          final detail = BolinCard(
+            child: _DocumentDetail(
+              document: state.selectedDocument,
+              customerOptions: customerOptions,
+              routeOptions: routeOptions,
+            ),
+          );
           if (isWide) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -27,12 +45,7 @@ class ValidationPage extends StatelessWidget {
                   child: _buildQueueList(context, state),
                 ),
                 const SizedBox(width: 16),
-                Expanded(
-                  flex: 4,
-                  child: BolinCard(
-                    child: _DocumentDetail(document: state.selectedDocument),
-                  ),
-                ),
+                Expanded(flex: 4, child: detail),
               ],
             );
           }
@@ -45,9 +58,7 @@ class ValidationPage extends StatelessWidget {
                   child: _buildQueueList(context, state),
                 ),
                 const SizedBox(height: 16),
-                BolinCard(
-                  child: _DocumentDetail(document: state.selectedDocument),
-                ),
+                detail,
               ],
             ),
           );
@@ -66,7 +77,7 @@ class ValidationPage extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
             child: SectionHeader(
               title: 'Órdenes pendientes',
-              subtitle: 'Selecciona una orden para revisar su información.',
+              subtitle: 'Selecciona una orden para completar su información.',
             ),
           ),
           const SizedBox(height: 12),
@@ -120,26 +131,21 @@ class ValidationPage extends StatelessWidget {
                                                 color: Theme.of(context).colorScheme.outline,
                                               ),
                                         ),
+                                        if (document.deliveryDate != null) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Entrega: ${MaterialLocalizations.of(context).formatShortDate(document.deliveryDate!)}',
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                  color: Theme.of(context).colorScheme.outline,
+                                                ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
                                   StatusPill(status: document.status),
                                 ],
                               ),
-                              if (document.reasons.isNotEmpty) ...[
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    for (final reason in document.reasons.take(3))
-                                      Chip(
-                                        label: Text(reason),
-                                        avatar: const Icon(Icons.info_outline, size: 16),
-                                      ),
-                                  ],
-                                ),
-                              ],
                             ],
                           ),
                         ),
@@ -154,18 +160,24 @@ class ValidationPage extends StatelessWidget {
 }
 
 class _DocumentDetail extends StatefulWidget {
-  const _DocumentDetail({required this.document});
+  const _DocumentDetail({
+    required this.document,
+    required this.customerOptions,
+    required this.routeOptions,
+  });
 
   final ProcessedDocumentView? document;
+  final List<String> customerOptions;
+  final List<String> routeOptions;
 
   @override
   State<_DocumentDetail> createState() => _DocumentDetailState();
 }
 
 class _DocumentDetailState extends State<_DocumentDetail> {
-  late TextEditingController _customerController;
-  late TextEditingController _routeController;
   late List<TextEditingController> _quantityControllers;
+  String? _customer;
+  String? _route;
   DateTime? _deliveryDate;
   bool _saving = false;
 
@@ -179,7 +191,7 @@ class _DocumentDetailState extends State<_DocumentDetail> {
   @override
   void initState() {
     super.initState();
-    _syncControllers();
+    _syncState();
   }
 
   @override
@@ -187,16 +199,14 @@ class _DocumentDetailState extends State<_DocumentDetail> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.document != widget.document) {
       _disposeControllers();
-      _syncControllers();
+      _syncState();
     }
   }
 
-  void _syncControllers() {
+  void _syncState() {
     final doc = document;
-    _customerController = TextEditingController(
-      text: doc?.customerName ?? doc?.customerCode ?? '',
-    );
-    _routeController = TextEditingController(text: doc?.routeCode ?? '');
+    _customer = _nullableOrNull(doc?.customerName ?? doc?.customerCode);
+    _route = _nullableOrNull(doc?.routeCode);
     _quantityControllers = [
       for (final item in doc?.items ?? const <OrderLineView>[])
         TextEditingController(text: item.quantity.toString()),
@@ -204,9 +214,12 @@ class _DocumentDetailState extends State<_DocumentDetail> {
     _deliveryDate = doc?.deliveryDate;
   }
 
+  static String? _nullableOrNull(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   void _disposeControllers() {
-    _customerController.dispose();
-    _routeController.dispose();
     for (final controller in _quantityControllers) {
       controller.dispose();
     }
@@ -233,21 +246,16 @@ class _DocumentDetailState extends State<_DocumentDetail> {
         OrderLineView(
           description: item.description,
           quantity: parsedQuantity == null || parsedQuantity < 0 ? item.quantity : parsedQuantity,
-          matchStatus: item.matchStatus,
-          productCode: item.productCode,
-          productDescription: item.productDescription,
           pdfCode: item.pdfCode,
-          confidence: item.confidence,
-          reason: item.reason,
-          candidates: item.candidates,
+          ean: item.ean,
         ),
       );
     }
 
     await context.read<AppState>().applyCorrection(
           doc,
-          customerName: _customerController.text,
-          routeCode: _routeController.text,
+          customerName: _customer ?? '',
+          routeCode: _route,
           deliveryDate: _deliveryDate,
           correctedItems: correctedItems,
         );
@@ -258,9 +266,38 @@ class _DocumentDetailState extends State<_DocumentDetail> {
     setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Corrección guardada. La orden pasó a procesada en esta sesión.'),
+        content: Text('Orden aprobada y enviada a consolidación.'),
       ),
     );
+  }
+
+  Future<void> _discardOrder() async {
+    final doc = document;
+    if (doc == null) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('¿Descartar esta orden?'),
+          content: const Text('Se quitará de la bandeja de revisión y no entrará a la consolidación.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Descartar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true && mounted) {
+      context.read<AppState>().discardDocument(doc);
+    }
   }
 
   Future<void> _pickDeliveryDate() async {
@@ -292,19 +329,20 @@ class _DocumentDetailState extends State<_DocumentDetail> {
           SectionHeader(
             title: document!.sourceFilename,
             subtitle: _isEditable
-                ? 'Corrige la información que falte y guarda la orden.'
+                ? 'Completa la información y aprueba la orden.'
                 : 'Información operativa de la orden.',
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          Row(
             children: [
               StatusPill(status: document!.status),
+              const Spacer(),
+              if (document!.orderNumber != null && document!.orderNumber!.isNotEmpty)
+                DetailChip(label: 'Nº de orden', value: document!.orderNumber!),
             ],
           ),
           const SizedBox(height: 20),
-          _buildReviewReasons(context),
+          _buildOperationalAlert(context),
           const SizedBox(height: 20),
           if (_isEditable)
             _buildEditableFields(context)
@@ -320,61 +358,83 @@ class _DocumentDetailState extends State<_DocumentDetail> {
                 )
               : _buildItemsList(context),
           const SizedBox(height: 20),
-          Card(
-            child: Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: const Icon(Icons.tune_rounded),
-                title: const Text('Detalles técnicos', style: TextStyle(fontWeight: FontWeight.w700)),
-                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                children: [
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      DetailChip(label: 'Parser', value: document!.parserId),
-                      DetailChip(label: 'Tipo', value: document!.documentType),
-                      DetailChip(label: 'Nº de orden', value: document!.orderNumber ?? '-'),
-                      DetailChip(label: 'Procesado', value: document!.receivedAt == null ? '-' : MaterialLocalizations.of(context).formatShortDate(document!.receivedAt!)),
-                    ],
-                  ),
-                ],
+          if (_isEditable) _buildActions(context),
+          if (_isEditable) const SizedBox(height: 20),
+          _buildPdfAccess(context),
+          const SizedBox(height: 20),
+          if (document!.receivedAt != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Procesado el ${MaterialLocalizations.of(context).formatShortDate(document!.receivedAt!)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildReviewReasons(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('¿Qué requiere revisión?', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 10),
-        if (document!.reasons.isEmpty)
-          Text('Sin observaciones.', style: Theme.of(context).textTheme.bodyMedium)
-        else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final reason in document!.reasons)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.arrow_right_rounded, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(reason)),
-                    ],
-                  ),
+  /// Alerta operativa, en lenguaje funcional y con acción sugerida.
+  Widget _buildOperationalAlert(BuildContext context) {
+    final doc = document!;
+    final (title, message, bg, fg) = switch (doc.status) {
+      OrderProcessingStatus.reviewRequired => (
+        'Revisión pendiente',
+        'El sistema no pudo asignar toda la información. Confirma los datos y aprueba la orden.',
+        const Color(0xFFFFF4D6),
+        const Color(0xFF9A6A00),
+      ),
+      OrderProcessingStatus.noMatch => (
+        'Cliente no identificado',
+        'No se encontró una coincidencia para este pedido. Selecciona la cuenta y la ruta correctas, o descarta la orden.',
+        const Color(0xFFF4F5F7),
+        const Color(0xFF636A72),
+      ),
+      OrderProcessingStatus.error => (
+        'No se pudo leer el documento',
+        'El archivo no contiene información legible. Verifica el PDF original o descarta la orden.',
+        const Color(0xFFFDE7E6),
+        const Color(0xFFB42318),
+      ),
+      _ => (
+        'Revisión pendiente',
+        'Confirma la información de la orden antes de enviarla a consolidación.',
+        const Color(0xFFFFF4D6),
+        const Color(0xFF9A6A00),
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: fg.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.campaign_rounded, color: fg),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(color: fg, fontWeight: FontWeight.w800),
                 ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: fg),
+                ),
+              ],
+            ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -385,21 +445,9 @@ class _DocumentDetailState extends State<_DocumentDetail> {
       children: [
         Text('Datos de la orden', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
-        TextField(
-          controller: _customerController,
-          decoration: const InputDecoration(
-            labelText: 'Cliente',
-            border: OutlineInputBorder(),
-          ),
-        ),
+        _buildCustomerDropdown(context),
         const SizedBox(height: 12),
-        TextField(
-          controller: _routeController,
-          decoration: const InputDecoration(
-            labelText: 'Ruta',
-            border: OutlineInputBorder(),
-          ),
-        ),
+        _buildRouteDropdown(context),
         const SizedBox(height: 12),
         InkWell(
           onTap: _pickDeliveryDate,
@@ -417,31 +465,57 @@ class _DocumentDetailState extends State<_DocumentDetail> {
             ),
           ),
         ),
-        const SizedBox(height: 20),
-        FilledButton.icon(
-          onPressed: _saving ? null : _saveCorrection,
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-          icon: _saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.check_rounded),
-          label: Text(
-            _saving ? 'Guardando...' : 'Guardar corrección',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'La corrección se conserva en esta sesión y la orden pasa a consolidación.',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-        ),
       ],
     );
+  }
+
+  Widget _buildCustomerDropdown(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      initialValue: _customer,
+      decoration: const InputDecoration(labelText: 'Cliente'),
+      icon: const Icon(Icons.storefront_outlined),
+      hint: const Text('Seleccionar cliente'),
+      items: _dropdownItems(
+        options: widget.customerOptions,
+        current: _customer,
+        emptyLabel: 'Cliente no identificado',
+      ),
+      onChanged: (value) => setState(() => _customer = value),
+    );
+  }
+
+  Widget _buildRouteDropdown(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      initialValue: _route,
+      decoration: const InputDecoration(labelText: 'Ruta'),
+      icon: const Icon(Icons.local_shipping_outlined),
+      hint: const Text('Seleccionar ruta'),
+      items: _dropdownItems(
+        options: widget.routeOptions,
+        current: _route,
+        emptyLabel: 'Ruta no asignada',
+      ),
+      onChanged: (value) => setState(() => _route = value),
+    );
+  }
+
+  List<DropdownMenuItem<String>> _dropdownItems({
+    required List<String> options,
+    required String? current,
+    required String emptyLabel,
+  }) {
+    final items = <DropdownMenuItem<String>>[];
+    if (current != null && !options.contains(current)) {
+      items.add(DropdownMenuItem(value: current, child: Text(current)));
+    }
+    items.addAll([
+      for (final option in options)
+        DropdownMenuItem(value: option, child: Text(option)),
+    ]);
+    if (items.isEmpty) {
+      items.add(DropdownMenuItem(value: null, child: Text(emptyLabel)));
+    }
+    return items;
   }
 
   Widget _buildReadOnlyFields(BuildContext context) {
@@ -457,36 +531,63 @@ class _DocumentDetailState extends State<_DocumentDetail> {
   }
 
   Widget _buildItemsList(BuildContext context) {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: document!.items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (context, index) {
-        final item = document!.items[index];
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            ),
+            child: const Row(
+              children: [
+                Expanded(child: Text('Producto', style: TextStyle(fontWeight: FontWeight.w800))),
+                SizedBox(width: 120, child: Text('Cantidad', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w800))),
+              ],
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+          for (var index = 0; index < document!.items.length; index++)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                ),
+              ),
+              child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      item.productDescription ?? item.description,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          document!.items[index].description,
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        if (document!.items[index].pdfCode != null || document!.items[index].ean != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            [
+                              if (document!.items[index].pdfCode != null) 'Código ${document!.items[index].pdfCode}',
+                              if (document!.items[index].ean != null) 'EAN ${document!.items[index].ean}',
+                            ].join(' • '),
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (_isEditable) ...[
-                    const SizedBox(width: 12),
+                  const SizedBox(width: 12),
+                  if (_isEditable)
                     SizedBox(
-                      width: 96,
+                      width: 120,
                       child: TextField(
                         controller: _quantityControllers[index],
                         keyboardType: TextInputType.number,
@@ -497,27 +598,112 @@ class _DocumentDetailState extends State<_DocumentDetail> {
                           isDense: true,
                         ),
                       ),
-                    ),
-                  ] else
-                    Text('x${item.quantity}', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                    )
+                  else
+                    Text('x${document!.items[index].quantity}', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 ],
               ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  DetailChip(label: 'Coincidencia', value: item.matchStatus),
-                ],
-              ),
-              if (item.reason != null) ...[
-                const SizedBox(height: 8),
-                Text(item.reason!, style: Theme.of(context).textTheme.bodySmall),
-              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    final approveButton = FilledButton.icon(
+      onPressed: _saving ? null : _saveCorrection,
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+      ),
+      icon: _saving
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.check_rounded),
+      label: Text(
+        _saving ? 'Enviando...' : 'Aprobar y enviar a consolidación',
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+    );
+    final discardButton = OutlinedButton.icon(
+      onPressed: _saving ? null : _discardOrder,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+      ),
+      icon: const Icon(Icons.delete_outline_rounded),
+      label: const Text(
+        'Descartar orden',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 560) {
+          return Row(
+            children: [
+              Expanded(child: approveButton),
+              const SizedBox(width: 12),
+              Expanded(child: discardButton),
             ],
-          ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            approveButton,
+            const SizedBox(height: 12),
+            discardButton,
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildPdfAccess(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.picture_as_pdf_outlined, color: Color(0xFFE52421)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Archivo original',
+                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  document!.sourceFilename,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Tooltip(
+            message: 'La visualización del PDF original estará disponible en una próxima versión.',
+            child: OutlinedButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Ver PDF'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

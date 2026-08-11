@@ -4,12 +4,11 @@ The full pipeline result is a single, serializable object that the API can
 return to the frontend. It always carries enough evidence to explain why an
 order was persisted, queued for review or rejected:
 
-- ``PROCESSED``: customer, route and every item resolved; the order was
-  persisted with ``OrderStatus.PROCESSED``.
+- ``PROCESSED``: customer and route resolved; the order was persisted with
+  ``OrderStatus.PROCESSED``.
 - ``REVIEW_REQUIRED``: some correspondence is not conclusive (ambiguous
-  customer, ambiguous route or item candidates). Nothing is persisted.
-- ``NO_MATCH``: at least one piece of evidence could not be found. Nothing is
-  persisted.
+  customer, ambiguous route or missing header data). Nothing is persisted.
+- ``NO_MATCH``: the customer could not be matched. Nothing is persisted.
 - ``ERROR``: the document could not be read, detected or parsed. Nothing is
   persisted.
 
@@ -22,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
 from app.domain.document_processing.enums import DocumentType
-from app.domain.document_processing.matching import CustomerMatchResult, MatchResult
+from app.domain.document_processing.matching import CustomerMatchResult
 from app.domain.document_processing.purchase_order import PurchaseOrderItemDocument
 from app.domain.entities import Order, Route
 
@@ -41,18 +40,6 @@ class ProcessingStatus(enum.Enum):
 
 
 @dataclass(frozen=True)
-class ProcessedItemResult:
-    """An extracted line plus its catalog matching decision.
-
-    ``item`` is the information as printed in the PDF; ``match`` is the
-    correspondence to the catalog (MATCHED / REVIEW_REQUIRED / NO_MATCH).
-    """
-
-    item: PurchaseOrderItemDocument
-    match: MatchResult
-
-
-@dataclass(frozen=True)
 class ProcessedOrderResult:
     """Outcome of running the full processing pipeline on a single PDF.
 
@@ -65,7 +52,7 @@ class ProcessedOrderResult:
     - ``processed_at``: audit timestamp of the attempt (frontend contract).
     - ``customer_match``: customer correspondence decision.
     - ``route`` / ``route_reason``: resolved route (or why it was not resolved).
-    - ``items``: per-line matching evidence.
+    - ``items``: the extracted lines, as printed in the PDF.
     - ``reasons``: human-readable explanations for the overall status.
     - ``order``: the persisted order when ``status`` is PROCESSED.
     """
@@ -77,10 +64,12 @@ class ProcessedOrderResult:
     processed_at: datetime = field(default_factory=_utc_now)
     order_number: str | None = None
     delivery_date: date | None = None
+    customer_code: str | None = None
+    customer_name: str | None = None
     customer_match: CustomerMatchResult | None = None
     route: Route | None = None
     route_reason: str = ""
-    items: tuple[ProcessedItemResult, ...] = ()
+    items: tuple[PurchaseOrderItemDocument, ...] = ()
     reasons: tuple[str, ...] = ()
     order: Order | None = None
 

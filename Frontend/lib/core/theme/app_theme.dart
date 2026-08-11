@@ -11,7 +11,7 @@ class AppTheme {
 
   static ThemeData get light {
     final scheme = ColorScheme.fromSeed(
-      seedColor: _bolinYellow,
+      seedColor: _bolinRed,
       brightness: Brightness.light,
       primary: _bolinYellow,
       secondary: _bolinRed,
@@ -66,7 +66,7 @@ class AppTheme {
       dividerTheme: DividerThemeData(color: scheme.outlineVariant, thickness: 1),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surfaceContainerLowest,
-        selectedIconTheme: const IconThemeData(color: _bolinYellow),
+        selectedIconTheme: const IconThemeData(color: _bolinRed),
         selectedLabelTextStyle: const TextStyle(
           color: _bolinDark,
           fontWeight: FontWeight.w700,
@@ -125,7 +125,7 @@ class AppTheme {
       tabBarTheme: TabBarThemeData(
         labelColor: _bolinDark,
         unselectedLabelColor: _bolinDark.withValues(alpha: 0.6),
-        indicatorColor: _bolinYellow,
+        indicatorColor: _bolinRed,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: base.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
         unselectedLabelStyle: base.textTheme.labelLarge,

@@ -4,29 +4,23 @@ These models belong to the infrastructure/persistence layer. They are kept
 strictly separate from the domain entities (``app.domain.entities``), which
 are immutable dataclasses without any ORM dependency (ADR-001, ADR-003).
 
-Schema notes (Sprint 2 - Database Foundation):
+Schema notes (definitive model):
 
 - Every business table uses a surrogate integer primary key plus a natural
-  business code with a UNIQUE constraint (``code``). This matches the domain
-  entities, which expose both ``id`` (assigned by persistence) and ``code``
-  (the business key used for matching, e.g. ``CL000168``, ``PPN002``,
-  ``01010101``).
-- ``customers.route_id`` is a NOT NULL foreign key: the documented business
-  rule is one route per customer (2441/2442 records confirmed). The single
-  known exception (``CL001062``) is PENDING BUSINESS CONFIRMATION and will be
-  handled without schema changes if confirmed (documented in the sprint
-  report).
-- ``product_route`` is an N:N association table prepared for a future
-  catalog-per-route. It is NOT a functional constraint of the MVP: orders
-  reference products directly, and products are not forced to belong to a
-  route. The cardinality Product<->Route is still under business
-  confirmation.
+  business key. For ``customers`` the business key is ``(route_id, name)``:
+  the customer name is the matching key (``docs/data/CLIENTES POR RUTA.xlsx``)
+  and the same name can exist on more than one route (e.g. ``INVERSIONES
+  LLERS`` on PPN303 and PPN601), so a composite UNIQUE constraint on
+  ``(route_id, name)`` is the persistent uniqueness rule.
+- ``customers.route_id`` is a NOT NULL foreign key: every customer row
+  belongs to exactly one route (1:1 documented business rule).
 - ``orders.status`` stores the string values of ``OrderStatus``.
 - ``orders.order_number`` is indexed but NOT unique: order numbering is
   per-customer in the real data; global uniqueness is pending business
   confirmation.
-- ``products.ean`` is nullable (the current catalog has no usable EAN for
-  matching; matching is by description in the MVP - ADR-003).
+- ``order_items`` stores the product information exactly as printed in the PDF
+  (``description``, ``quantity``) plus ``pdf_code``/``ean`` as traceability
+  only. There is no product catalog table in the definitive model.
 - Monetary values (``unit_price``, ``total``) and presentation (``uom``,
   ``units_per_pack``) belong to the parsing layer (ADR-002), not to the MVP
   schema.
@@ -38,14 +32,13 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
-    Column,
     Date,
     DateTime,
     ForeignKey,
     Integer,
     String,
-    Table,
     Unicode,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,22 +48,6 @@ from app.database.base import Base
 def utc_now() -> datetime:
     """Return the current UTC timestamp (used for audit columns)."""
     return datetime.now(UTC)
-
-
-product_route = Table(
-    "product_route",
-    Base.metadata,
-    Column(
-        "product_id",
-        ForeignKey("products.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column(
-        "route_id",
-        ForeignKey("routes.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-)
 
 
 class RouteModel(Base):
@@ -88,20 +65,19 @@ class RouteModel(Base):
     )
 
     customers: Mapped[list["CustomerModel"]] = relationship(back_populates="route")
-    products: Mapped[list["ProductModel"]] = relationship(
-        secondary=product_route, back_populates="routes"
-    )
 
 
 class CustomerModel(Base):
-    """Customer that sends purchase orders (``code`` = ``CL#####[-NNN]``)."""
+    """Customer that sends purchase orders (key: ``(route_id, name)``)."""
 
     __tablename__ = "customers"
+    __table_args__ = (
+        UniqueConstraint("route_id", "name", name="uq_customers_route_id_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
-    rnc: Mapped[str | None] = mapped_column(String(20), index=True)
+    address: Mapped[str | None] = mapped_column(Unicode(255))
     route_id: Mapped[int] = mapped_column(
         ForeignKey("routes.id"), nullable=False, index=True
     )
@@ -113,27 +89,6 @@ class CustomerModel(Base):
 
     route: Mapped["RouteModel"] = relationship(back_populates="customers")
     orders: Mapped[list["OrderModel"]] = relationship(back_populates="customer")
-
-
-class ProductModel(Base):
-    """Product from the fixed catalog (``code`` is the 8-digit internal code)."""
-
-    __tablename__ = "products"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
-    description: Mapped[str] = mapped_column(Unicode(512), nullable=False)
-    ean: Mapped[str | None] = mapped_column(String(32), index=True)
-    category: Mapped[str | None] = mapped_column(Unicode(128))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
-    )
-
-    routes: Mapped[list["RouteModel"]] = relationship(
-        secondary=product_route, back_populates="products"
-    )
 
 
 class OrderModel(Base):
@@ -164,7 +119,7 @@ class OrderModel(Base):
 
 
 class OrderItemModel(Base):
-    """Line of an order: a product and an integer quantity."""
+    """Line of an order: printed description, quantity and traceability ids."""
 
     __tablename__ = "order_items"
     __table_args__ = (
@@ -175,14 +130,13 @@ class OrderItemModel(Base):
     order_id: Mapped[int] = mapped_column(
         ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id"), nullable=False, index=True
-    )
+    description: Mapped[str] = mapped_column(Unicode(512), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    pdf_code: Mapped[str | None] = mapped_column(String(64))
+    ean: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
 
     order: Mapped["OrderModel"] = relationship(back_populates="items")
-    product: Mapped["ProductModel"] = relationship()
 
 
 class ProcessingHistoryModel(Base):

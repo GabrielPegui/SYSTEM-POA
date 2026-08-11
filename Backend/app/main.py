@@ -3,7 +3,6 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.errors import register_exception_handlers
@@ -11,7 +10,6 @@ from app.api.routes.health import router as health_router
 from app.api.routes.orders import router as orders_router
 from app.core.config import settings
 from app.core.logging import get_logger
-
 from app.database.session import get_engine
 
 logger = get_logger(__name__)

@@ -6,24 +6,23 @@ map persisted rows back to domain entities through
 ``app.infrastructure.persistence.mappers``.
 
 ``OrderRepository.save`` persists an order whose catalog references (route,
-customer, products) must already exist. It never creates catalog entities
-implicitly: matching must resolve the correspondence first, then persistence
-stores it (matching first, persistence after). If a referenced route,
-customer or product is missing, ``CatalogReferenceNotFoundError`` is raised.
+customer) must already exist. It never creates catalog entities implicitly:
+matching must resolve the correspondence first, then persistence stores it
+(matching first, persistence after). If a referenced route or customer is
+missing, ``CatalogReferenceNotFoundError`` is raised.
 """
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.domain.document_processing.history import ProcessingHistoryRecord
-from app.domain.entities import Customer, Order, Product, Route
+from app.domain.entities import Customer, Order, Route
 from app.domain.enums import OrderStatus
 from app.domain.exceptions import CatalogReferenceNotFoundError
 from app.domain.interfaces.repositories import (
     CustomerRepository,
     OrderRepository,
     ProcessingHistoryRepository,
-    ProductRepository,
     RouteRepository,
 )
 from app.infrastructure.persistence.mappers import (
@@ -32,22 +31,19 @@ from app.infrastructure.persistence.mappers import (
     domain_to_item_model,
     order_to_domain,
     processing_history_to_domain,
-    product_to_domain,
     route_to_domain,
 )
 from app.infrastructure.persistence.models import (
     CustomerModel,
-    OrderItemModel,
     OrderModel,
     ProcessingHistoryModel,
-    ProductModel,
     RouteModel,
 )
 
 
 def _order_load_options() -> list:
     return [
-        selectinload(OrderModel.items).selectinload(OrderItemModel.product),
+        selectinload(OrderModel.items),
         selectinload(OrderModel.customer).selectinload(CustomerModel.route),
     ]
 
@@ -64,6 +60,12 @@ class SqlAlchemyRouteRepository(RouteRepository):
         ).first()
         return route_to_domain(model) if model is not None else None
 
+    def list(self) -> list[Route]:
+        models = self._session.scalars(
+            select(RouteModel).order_by(RouteModel.code)
+        ).all()
+        return [route_to_domain(model) for model in models]
+
 
 class SqlAlchemyCustomerRepository(CustomerRepository):
     """SQLAlchemy implementation of the customer repository."""
@@ -71,58 +73,32 @@ class SqlAlchemyCustomerRepository(CustomerRepository):
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get_by_code(self, code: str) -> Customer | None:
-        model = self._session.scalars(
-            select(CustomerModel)
-            .options(selectinload(CustomerModel.route))
-            .where(CustomerModel.code == code)
-        ).first()
-        return customer_to_domain(model) if model is not None else None
-
-    def get_by_rnc(self, rnc: str) -> tuple[Customer, ...]:
-        models = self._session.scalars(
-            select(CustomerModel)
-            .options(selectinload(CustomerModel.route))
-            .where(CustomerModel.rnc == rnc)
-            .order_by(CustomerModel.code)
-        ).all()
-        return tuple(customer_to_domain(model) for model in models)
-
     def list(self) -> list[Customer]:
         models = self._session.scalars(
             select(CustomerModel)
             .options(selectinload(CustomerModel.route))
-            .order_by(CustomerModel.code)
+            .order_by(CustomerModel.name)
         ).all()
         return [customer_to_domain(model) for model in models]
 
-
-class SqlAlchemyProductRepository(ProductRepository):
-    """SQLAlchemy implementation of the product repository."""
-
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def get_by_code(self, code: str) -> Product | None:
-        model = self._session.scalars(
-            select(ProductModel).where(ProductModel.code == code)
-        ).first()
-        return product_to_domain(model) if model is not None else None
-
-    def list(self) -> list[Product]:
+    def get_by_name(self, name: str) -> tuple[Customer, ...]:
         models = self._session.scalars(
-            select(ProductModel).order_by(ProductModel.code)
+            select(CustomerModel)
+            .options(selectinload(CustomerModel.route))
+            .where(CustomerModel.name == name)
+            .order_by(CustomerModel.name)
         ).all()
-        return [product_to_domain(model) for model in models]
+        return tuple(customer_to_domain(model) for model in models)
 
 
 class SqlAlchemyOrderRepository(OrderRepository):
     """SQLAlchemy implementation of the order repository.
 
-    ``save`` persists the full order aggregate. The referenced route, customer
-    and products must already exist in the catalog; they are looked up by
-    their natural codes and a ``CatalogReferenceNotFoundError`` is raised if
-    any is missing. Persistence never creates catalog entities implicitly.
+    ``save`` persists the full order aggregate. The referenced route and
+    customer must already exist in the catalog; the customer is resolved by its
+    surrogate id and the route by its code, and a
+    ``CatalogReferenceNotFoundError`` is raised if any is missing. Persistence
+    never creates catalog entities implicitly.
     """
 
     def __init__(self, session: Session) -> None:
@@ -130,7 +106,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
 
     def save(self, order: Order) -> Order:
         self._require_route(order.customer.route.code)
-        customer_model = self._require_customer(order.customer.code)
+        customer_model = self._require_customer(order.customer)
 
         order_model = OrderModel(
             order_number=order.order_number,
@@ -139,8 +115,7 @@ class SqlAlchemyOrderRepository(OrderRepository):
             status=order.status.value,
         )
         for item in order.items:
-            product_model = self._require_product(item.product.code)
-            order_model.items.append(domain_to_item_model(product_model, item))
+            order_model.items.append(domain_to_item_model(item))
 
         self._session.add(order_model)
         try:
@@ -201,20 +176,18 @@ class SqlAlchemyOrderRepository(OrderRepository):
             raise CatalogReferenceNotFoundError("Route", code)
         return model
 
-    def _require_customer(self, code: str) -> CustomerModel:
-        model = self._session.scalars(
-            select(CustomerModel).where(CustomerModel.code == code)
-        ).first()
+    def _require_customer(self, customer: Customer) -> CustomerModel:
+        if customer.id is not None:
+            model = self._session.get(CustomerModel, customer.id)
+        else:
+            model = self._session.scalars(
+                select(CustomerModel)
+                .where(CustomerModel.name == customer.name)
+                .order_by(CustomerModel.id)
+                .limit(1)
+            ).first()
         if model is None:
-            raise CatalogReferenceNotFoundError("Customer", code)
-        return model
-
-    def _require_product(self, code: str) -> ProductModel:
-        model = self._session.scalars(
-            select(ProductModel).where(ProductModel.code == code)
-        ).first()
-        if model is None:
-            raise CatalogReferenceNotFoundError("Product", code)
+            raise CatalogReferenceNotFoundError("Customer", customer.name)
         return model
 
 

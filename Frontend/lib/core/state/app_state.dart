@@ -110,8 +110,17 @@ class AppState extends ChangeNotifier {
       final keptSessionDocuments = _snapshot.sessionDocuments.isEmpty
           ? fresh.sessionDocuments
           : _snapshot.sessionDocuments;
+      // Evita reintroducir desde el backend una orden que la sesión ya
+      // representa: reimportar el mismo PDF reemplaza, no suma.
+      final keptOrderNumbers = {
+        for (final document in keptSessionDocuments)
+          if (document.orderNumber != null) document.orderNumber!,
+      };
+      final dedupedPersistedOrders = fresh.persistedOrders
+          .where((order) => !keptOrderNumbers.contains(order.orderNumber))
+          .toList(growable: false);
       _snapshot = OverviewSnapshot(
-        persistedOrders: fresh.persistedOrders,
+        persistedOrders: dedupedPersistedOrders,
         sessionDocuments: keptSessionDocuments,
         usingDemoData: fresh.usingDemoData,
         bannerMessage: fresh.bannerMessage,
@@ -367,6 +376,48 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Quita una orden de la bandeja de revisión de la sesión.
+  ///
+  /// La orden descartada no entra a la consolidación ni se notifica al
+  /// backend: simplemente deja de estar visible en la operación de la sesión.
+  void discardDocument(ProcessedDocumentView document) {
+    final remaining = _snapshot.sessionDocuments
+        .where((existing) => existing.sourceFilename != document.sourceFilename)
+        .toList(growable: false);
+    _snapshot = OverviewSnapshot(
+      persistedOrders: _snapshot.persistedOrders,
+      sessionDocuments: remaining,
+      usingDemoData: _snapshot.usingDemoData,
+      bannerMessage: _snapshot.bannerMessage,
+    );
+    _selectedDocument = remaining.isEmpty
+        ? null
+        : remaining.firstWhere(
+            (existing) => existing.status != OrderProcessingStatus.processed,
+            orElse: () => remaining.first,
+          );
+    notifyListeners();
+  }
+
+  /// Vacía el estado de la sesión: documentos importados, selección y
+  /// resumen de lote. Las órdenes persistidas en el backend no se tocan;
+  /// reaparecerán en la próxima [loadOverview].
+  void clearSession() {
+    _snapshot = OverviewSnapshot(
+      persistedOrders: _snapshot.persistedOrders,
+      sessionDocuments: const <ProcessedDocumentView>[],
+      usingDemoData: _snapshot.usingDemoData,
+      bannerMessage: _snapshot.bannerMessage,
+    );
+    _selectedDocument = null;
+    _batchSummary = null;
+    _batchTotal = 0;
+    _batchDone = 0;
+    _draftPath = '';
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   static String _friendlyError(Object error) {
     return error.toString().replaceFirst('Exception: ', '');
   }
@@ -394,9 +445,7 @@ class AppState extends ChangeNotifier {
     return values;
   }
 
-  List<ConsolidatedEntityView> get consolidatedByDate {
-    final values = _snapshot.consolidateByDate().values.toList();
-    values.sort((a, b) => a.key.compareTo(b.key));
-    return values;
+  List<RouteDateGroupView> get consolidatedByRouteAndDate {
+    return _snapshot.consolidateByRouteAndDate();
   }
 }

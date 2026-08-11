@@ -1,8 +1,8 @@
 """Catalog matching implementations (Sprint 7).
 
-Contains the concrete ``ProductMatcher`` and ``CustomerMatcher``
-implementations that decide the correspondence between document data and the
-fixed catalog. Both follow the documented strategy (``docs/ANALISIS_DATOS_MVP.md``
-and ADR-003): matching by description, never creating catalog entities, and
-expressing uncertainty through MATCHED / REVIEW_REQUIRED / NO_MATCH.
+Contains the concrete ``CustomerMatcher`` implementation that decides the
+correspondence between the document name and the customer catalog. It follows
+the documented strategy (``docs/ANALISIS_DATOS_MVP.md`` and ADR-003):
+matching by name, never creating catalog entities, and expressing uncertainty
+through MATCHED / REVIEW_REQUIRED / NO_MATCH.
 """

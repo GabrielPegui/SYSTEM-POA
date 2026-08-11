@@ -11,23 +11,22 @@ from app.domain.validation import require_not_blank, require_valid_optional_id
 class Customer:
     """A customer that sends purchase orders.
 
-    ``code`` is the business identifier found in the source data (e.g.
-    ``CL000168``). Each customer belongs to exactly one route.
+    The business key is the customer ``name`` from the source data
+    (``docs/data/CLIENTES POR RUTA.xlsx``). There is no stable business code
+    in the new model: the same name can appear on more than one route (e.g.
+    ``INVERSIONES LLERS`` on PPN303 and PPN601), so the persistent uniqueness
+    key is the composite ``(route, name)``.
 
-    ``rnc`` is the tax identifier present in the source data (``OUT_CLIENTES``
-    column 2) and in the database schema. It is not a unique key: a single RNC
-    maps to many accounts (``docs/ANALISIS_DATOS_MVP.md``), which is why it is
-    only used as reinforcement by the customer matcher.
+    ``address`` is the location from the source data. It is not a unique key
+    either, but it helps a human disambiguate equal names during review.
     """
 
-    code: str
     name: str
     route: Route
-    rnc: str | None = None
+    address: str | None = None
     id: int | None = None
 
     def __post_init__(self) -> None:
-        require_not_blank("Customer code", self.code)
         require_not_blank("Customer name", self.name)
         require_valid_optional_id("Customer id", self.id)
         if self.route is None:

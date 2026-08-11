@@ -12,8 +12,8 @@ def test_get_order_success(order_repo, order, get_order) -> None:
 
     assert result.order_number == order.order_number
     assert result.id is not None
-    assert result.customer.code == order.customer.code
-    assert result.items[0].product.code == order.items[0].product.code
+    assert result.customer.name == order.customer.name
+    assert result.items[0].description == order.items[0].description
 
 
 def test_get_order_not_found(get_order) -> None:

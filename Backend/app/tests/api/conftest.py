@@ -17,13 +17,11 @@ from app.api.deps import (
     get_validate_order,
 )
 from app.application.use_cases import CreateOrder, GetOrder, ListOrders, ValidateOrder
-from app.domain.entities import Customer, Order, OrderItem, Product, Route
+from app.domain.entities import Customer, Order, OrderItem, Route
 from app.main import app
 from app.tests.application.fakes import (
     InMemoryCustomerRepository,
     InMemoryOrderRepository,
-    InMemoryProductRepository,
-    InMemoryRouteRepository,
 )
 
 
@@ -34,17 +32,14 @@ def route() -> Route:
 
 @pytest.fixture
 def customer(route: Route) -> Customer:
-    return Customer(code="CL000168", name="JASON FAST FOOD", route=route)
+    return Customer(
+        name="JASON FAST FOOD", route=route, address="Av. 27 de Febrero 200"
+    )
 
 
 @pytest.fixture
-def product() -> Product:
-    return Product(code="01010101", description="VIGA MEDIANA BLANCO PEPIN")
-
-
-@pytest.fixture
-def order_item(product: Product) -> OrderItem:
-    return OrderItem(product=product, quantity=6)
+def order_item() -> OrderItem:
+    return OrderItem(description="VIGA MEDIANA BLANCO PEPIN", quantity=6)
 
 
 @pytest.fixture
@@ -58,18 +53,8 @@ def order(customer: Customer, order_item: OrderItem) -> Order:
 
 
 @pytest.fixture
-def route_repo(route: Route) -> InMemoryRouteRepository:
-    return InMemoryRouteRepository([route])
-
-
-@pytest.fixture
 def customer_repo(customer: Customer) -> InMemoryCustomerRepository:
     return InMemoryCustomerRepository([customer])
-
-
-@pytest.fixture
-def product_repo(product: Product) -> InMemoryProductRepository:
-    return InMemoryProductRepository([product])
 
 
 @pytest.fixture
@@ -79,15 +64,11 @@ def order_repo() -> InMemoryOrderRepository:
 
 @pytest.fixture
 def client(
-    route_repo: InMemoryRouteRepository,
     customer_repo: InMemoryCustomerRepository,
-    product_repo: InMemoryProductRepository,
     order_repo: InMemoryOrderRepository,
 ) -> TestClient:
     """TestClient with the use-case providers overridden by in-memory fakes."""
-    app.dependency_overrides[get_create_order] = lambda: CreateOrder(
-        customer_repo, route_repo, product_repo, order_repo
-    )
+    app.dependency_overrides[get_create_order] = lambda: CreateOrder(customer_repo, order_repo)
     app.dependency_overrides[get_get_order] = lambda: GetOrder(order_repo)
     app.dependency_overrides[get_list_orders] = lambda: ListOrders(order_repo)
     app.dependency_overrides[get_validate_order] = lambda: ValidateOrder(order_repo)

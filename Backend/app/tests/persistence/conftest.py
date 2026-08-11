@@ -14,11 +14,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database.base import Base
-from app.domain.entities import Customer, Order, OrderItem, Product, Route
+from app.domain.entities import Customer, Order, OrderItem, Route
 from app.infrastructure.persistence import models  # noqa: F401  (register tables)
 from app.infrastructure.persistence.models import (
     CustomerModel,
-    ProductModel,
     RouteModel,
 )
 
@@ -54,17 +53,16 @@ def route() -> Route:
 
 @pytest.fixture
 def customer(route: Route) -> Customer:
-    return Customer(code="CL000168", name="JASON FAST FOOD", route=route)
+    return Customer(
+        name="JASON FAST FOOD", route=route, address="Av. 27 de Febrero 200"
+    )
 
 
 @pytest.fixture
-def product() -> Product:
-    return Product(code="01010101", description="VIGA MEDIANA BLANCO PEPIN")
-
-
-@pytest.fixture
-def order_item(product: Product) -> OrderItem:
-    return OrderItem(product=product, quantity=6)
+def order_item() -> OrderItem:
+    return OrderItem(
+        description="VIGA MEDIANA BLANCO PEPIN", quantity=6, pdf_code="01010101"
+    )
 
 
 @pytest.fixture
@@ -79,7 +77,7 @@ def order(customer: Customer, order_item: OrderItem) -> Order:
 
 @pytest.fixture
 def seeded_catalog(session, order: Order) -> None:
-    """Insert the route, customer and product referenced by ``order``.
+    """Insert the route and customer referenced by ``order``.
 
     The persistence repository requires catalog references to already exist
     (matching first, persistence after); this fixture seeds them so ``save``
@@ -89,10 +87,10 @@ def seeded_catalog(session, order: Order) -> None:
     session.add(route_model)
     session.flush()
     session.add(
-        CustomerModel(code=order.customer.code, name=order.customer.name, route_id=route_model.id)
-    )
-    for item in order.items:
-        session.add(
-            ProductModel(code=item.product.code, description=item.product.description)
+        CustomerModel(
+            name=order.customer.name,
+            route_id=route_model.id,
+            address=order.customer.address,
         )
+    )
     session.commit()

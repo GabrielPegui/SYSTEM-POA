@@ -3,8 +3,8 @@
 Every parser implements :class:`IPDFParser` and returns a normalized
 ``PurchaseOrderDocument``. Parsers only interpret the document structure;
 they never contain business rules, never access repositories and never
-match against the catalog (matching is a separate step handled by
-``ProductMatcher``).
+match against the catalog (matching is a separate step handled by the
+``CustomerMatcher``).
 """
 
 from app.infrastructure.document_processing.parsers.base import BaseParser

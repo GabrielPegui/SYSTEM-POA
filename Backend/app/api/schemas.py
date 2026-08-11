@@ -9,6 +9,11 @@ Decision (Sprint 4): the order identifier used in the URL paths is the
 business ``order_number`` (the natural key used by the application use
 cases), not the surrogate ``id``. The surrogate ``id`` is still returned in
 responses for reference.
+
+Definitive model (Pre-Sprint 9): the customer is identified by ``name`` (its
+business key) and there is no product catalog; order lines carry the product
+description exactly as printed in the PDF, plus ``pdf_code``/``ean`` as
+traceability only.
 """
 
 from datetime import date, datetime
@@ -21,15 +26,17 @@ from app.domain.enums import OrderStatus
 class CreateOrderItemRequest(BaseModel):
     """A single line of an order being created."""
 
-    product_code: str = Field(min_length=1, examples=["01010101"])
+    description: str = Field(min_length=1, examples=["PEPIN PAN HOT DOG 8/1"])
     quantity: int = Field(gt=0, examples=[6])
+    pdf_code: str | None = None
+    ean: str | None = None
 
 
 class CreateOrderRequest(BaseModel):
     """Body to register a structured purchase order."""
 
     order_number: str = Field(min_length=1, examples=["12653"])
-    customer_code: str = Field(min_length=1, examples=["CL000168"])
+    customer_name: str = Field(min_length=1, examples=["SUPERMERCADO CENTRAL"])
     delivery_date: date = Field(examples=["2026-08-10"])
     items: list[CreateOrderItemRequest] = Field(min_length=1)
 
@@ -37,9 +44,10 @@ class CreateOrderRequest(BaseModel):
 class OrderItemResponse(BaseModel):
     """A line of an order in API responses."""
 
-    product_code: str
-    product_description: str
+    description: str
     quantity: int
+    pdf_code: str | None = None
+    ean: str | None = None
 
 
 class OrderResponse(BaseModel):
@@ -49,7 +57,6 @@ class OrderResponse(BaseModel):
 
     id: int
     order_number: str
-    customer_code: str
     customer_name: str
     route_code: str
     delivery_date: date
@@ -57,41 +64,32 @@ class OrderResponse(BaseModel):
     items: list[OrderItemResponse]
 
 
-class ProcessedItemCandidateResponse(BaseModel):
-    """A catalog product offered as a candidate for review."""
+class ProcessedCustomerCandidateResponse(BaseModel):
+    """A catalog customer offered as a candidate for review."""
 
-    code: str
-    description: str
+    name: str
+    route_code: str
+    address: str | None = None
 
 
 class ProcessedItemResponse(BaseModel):
-    """A single extracted line plus its matching evidence."""
+    """A single extracted line, as printed in the PDF."""
 
     description: str
     quantity: int
     pdf_code: str | None = None
-    match_status: str
-    product_code: str | None = None
-    product_description: str | None = None
-    confidence: float | None = None
-    candidates: list[ProcessedItemCandidateResponse] = []
-    reason: str = ""
-
-
-class ProcessedCustomerCandidateResponse(BaseModel):
-    """A catalog account offered as a candidate for review."""
-
-    code: str
-    name: str
-    route_code: str
+    ean: str | None = None
 
 
 class ProcessOrderResponse(BaseModel):
     """Outcome of processing a purchase order PDF.
 
     ``status`` is one of ``processed`` / ``review_required`` / ``no_match`` /
-    ``error``. ``items`` always carries per-line matching evidence so the
-    frontend can show which lines need human review.
+    ``error``. ``customer_code`` is the identifier as printed in the document
+    (traceability). ``customer_name`` is the resolved catalog name when a
+    unique match exists, otherwise the name as printed in the document;
+    ``customer_candidates`` offers the catalog customers a human should choose
+    from when the name is ambiguous.
     """
 
     source_filename: str

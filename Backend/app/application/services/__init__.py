@@ -9,13 +9,11 @@ from app.application.services.order_validation import (
     ValidationDecision,
 )
 from app.application.services.route_resolution import (
-    AMBIGUOUS_ROUTE_CODES,
     RouteResolution,
     RouteResolver,
 )
 
 __all__ = [
-    "AMBIGUOUS_ROUTE_CODES",
     "OrderValidationService",
     "RouteResolution",
     "RouteResolver",

@@ -97,10 +97,15 @@ def create_order(
     """Register a structured purchase order and return it."""
     command = CreateOrderCommand(
         order_number=payload.order_number,
-        customer_code=payload.customer_code,
+        customer_name=payload.customer_name,
         delivery_date=payload.delivery_date,
         items=tuple(
-            CreateOrderItemCommand(product_code=item.product_code, quantity=item.quantity)
+            CreateOrderItemCommand(
+                description=item.description,
+                quantity=item.quantity,
+                pdf_code=item.pdf_code,
+                ean=item.ean,
+            )
             for item in payload.items
         ),
     )

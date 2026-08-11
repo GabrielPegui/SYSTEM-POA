@@ -1,7 +1,7 @@
-"""Tests for the validation gate (Sprint 7).
+"""Tests for the validation gate.
 
 The gate decides the overall ``ProcessingStatus`` from the resolved customer,
-route and per-item matches, and only builds a domain ``Order`` when every
+route and extracted header data, and only builds a domain ``Order`` when every
 reference is conclusive (ADR-003: nothing is persisted on REVIEW_REQUIRED /
 NO_MATCH / ERROR).
 """
@@ -12,13 +12,10 @@ import pytest
 
 from app.application.services.order_validation import OrderValidationService
 from app.application.services.route_resolution import RouteResolution
-from app.domain.document_processing.matching import CustomerMatchResult, MatchOutcome, MatchResult
-from app.domain.document_processing.processing import (
-    ProcessedItemResult,
-    ProcessingStatus,
-)
+from app.domain.document_processing.matching import CustomerMatchResult, MatchOutcome
+from app.domain.document_processing.processing import ProcessingStatus
 from app.domain.document_processing.purchase_order import PurchaseOrderItemDocument
-from app.domain.entities import Customer, Product, Route
+from app.domain.entities import Customer, Route
 
 
 @pytest.fixture
@@ -33,12 +30,7 @@ def route() -> Route:
 
 @pytest.fixture
 def customer(route: Route) -> Customer:
-    return Customer(code="CL000004-101", name="MERCADAL GUARICANO", route=route)
-
-
-@pytest.fixture
-def product() -> Product:
-    return Product(code="02010101", description="PEPIN PAN HOT DOG 8/1")
+    return Customer(name="MERCADAL GUARICANO", route=route)
 
 
 def _customer_match(customer: Customer) -> CustomerMatchResult:
@@ -49,23 +41,18 @@ def _customer_match(customer: Customer) -> CustomerMatchResult:
     )
 
 
-def _item_match(product: Product, outcome: MatchOutcome = MatchOutcome.MATCHED) -> ProcessedItemResult:
-    match = MatchResult(
-        outcome=outcome,
-        matched_product=product if outcome is MatchOutcome.MATCHED else None,
-        reason=f"{outcome.value} item",
-    )
-    return ProcessedItemResult(
-        item=PurchaseOrderItemDocument(description="PEPIN PAN HOT DOG 8/1", quantity=1),
-        match=match,
+def _items(*descriptions: str) -> tuple[PurchaseOrderItemDocument, ...]:
+    return tuple(
+        PurchaseOrderItemDocument(description=description, quantity=1)
+        for description in descriptions
     )
 
 
-def test_all_conclusive_is_processed(service, customer, route, product) -> None:
+def test_all_conclusive_is_processed(service, customer, route) -> None:
     decision = service.evaluate(
         customer_match=_customer_match(customer),
         route_resolution=RouteResolution(route),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )
@@ -76,16 +63,17 @@ def test_all_conclusive_is_processed(service, customer, route, product) -> None:
     assert decision.order.customer == customer
     assert decision.order.delivery_date == date(2026, 8, 10)
     assert len(decision.order.items) == 1
+    assert decision.order.items[0].description == "PEPIN PAN HOT DOG 8/1"
     assert decision.reasons == ()
 
 
-def test_no_match_customer_is_no_match(service, customer, route, product) -> None:
+def test_no_match_customer_is_no_match(service, route) -> None:
     no_match = CustomerMatchResult(outcome=MatchOutcome.NO_MATCH, reason="Not in catalog")
 
     decision = service.evaluate(
         customer_match=no_match,
         route_resolution=RouteResolution(route),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )
@@ -94,23 +82,7 @@ def test_no_match_customer_is_no_match(service, customer, route, product) -> Non
     assert decision.order is None
 
 
-def test_no_match_item_is_no_match(service, customer, route, product) -> None:
-    item = _item_match(product, MatchOutcome.NO_MATCH)
-
-    decision = service.evaluate(
-        customer_match=_customer_match(customer),
-        route_resolution=RouteResolution(route),
-        item_results=(item,),
-        delivery_date=date(2026, 8, 10),
-        order_number="4000326758",
-    )
-
-    assert decision.status is ProcessingStatus.NO_MATCH
-    assert decision.order is None
-    assert any("PEPIN PAN HOT DOG" in reason for reason in decision.reasons)
-
-
-def test_review_customer_requires_review(service, customer, route, product) -> None:
+def test_review_customer_requires_review(service, customer, route) -> None:
     review = CustomerMatchResult(
         outcome=MatchOutcome.REVIEW_REQUIRED,
         candidates=(customer,),
@@ -120,7 +92,7 @@ def test_review_customer_requires_review(service, customer, route, product) -> N
     decision = service.evaluate(
         customer_match=review,
         route_resolution=RouteResolution(route),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )
@@ -129,11 +101,11 @@ def test_review_customer_requires_review(service, customer, route, product) -> N
     assert decision.order is None
 
 
-def test_unresolved_route_requires_review(service, customer, route, product) -> None:
+def test_unresolved_route_requires_review(service, customer, route) -> None:
     decision = service.evaluate(
         customer_match=_customer_match(customer),
         route_resolution=RouteResolution(None, "Two routes pending confirmation"),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )
@@ -142,26 +114,11 @@ def test_unresolved_route_requires_review(service, customer, route, product) -> 
     assert decision.order is None
 
 
-def test_review_item_requires_review(service, customer, route, product) -> None:
-    item = _item_match(product, MatchOutcome.REVIEW_REQUIRED)
-
+def test_missing_order_number_requires_review(service, customer, route) -> None:
     decision = service.evaluate(
         customer_match=_customer_match(customer),
         route_resolution=RouteResolution(route),
-        item_results=(item,),
-        delivery_date=date(2026, 8, 10),
-        order_number="4000326758",
-    )
-
-    assert decision.status is ProcessingStatus.REVIEW_REQUIRED
-    assert decision.order is None
-
-
-def test_missing_order_number_requires_review(service, customer, route, product) -> None:
-    decision = service.evaluate(
-        customer_match=_customer_match(customer),
-        route_resolution=RouteResolution(route),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number=None,
     )
@@ -171,11 +128,11 @@ def test_missing_order_number_requires_review(service, customer, route, product)
     assert any("order number" in reason.lower() for reason in decision.reasons)
 
 
-def test_missing_delivery_date_requires_review(service, customer, route, product) -> None:
+def test_missing_delivery_date_requires_review(service, customer, route) -> None:
     decision = service.evaluate(
         customer_match=_customer_match(customer),
         route_resolution=RouteResolution(route),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=None,
         order_number="4000326758",
     )
@@ -188,7 +145,7 @@ def test_no_items_requires_review(service, customer, route) -> None:
     decision = service.evaluate(
         customer_match=_customer_match(customer),
         route_resolution=RouteResolution(route),
-        item_results=(),
+        items=(),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )
@@ -197,16 +154,13 @@ def test_no_items_requires_review(service, customer, route) -> None:
     assert any("no items" in reason.lower() for reason in decision.reasons)
 
 
-def test_no_match_dominates_review(service, customer, route, product) -> None:
-    no_match_item = _item_match(product, MatchOutcome.NO_MATCH)
-    review_customer = CustomerMatchResult(
-        outcome=MatchOutcome.REVIEW_REQUIRED, reason="Ambiguous"
-    )
+def test_no_match_dominates_review(service, route) -> None:
+    no_match_customer = CustomerMatchResult(outcome=MatchOutcome.NO_MATCH, reason="Not in catalog")
 
     decision = service.evaluate(
-        customer_match=review_customer,
-        route_resolution=RouteResolution(route),
-        item_results=(no_match_item,),
+        customer_match=no_match_customer,
+        route_resolution=RouteResolution(None, "Unresolved route"),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )
@@ -215,9 +169,9 @@ def test_no_match_dominates_review(service, customer, route, product) -> None:
 
 
 def test_route_reason_is_not_duplicated_when_equal_to_customer_reason(
-    service, customer, product
+    service, customer
 ) -> None:
-    shared_reason = "RNC 101532483 maps to 28 accounts"
+    shared_reason = "Name matches more than one catalog customer"
     review_customer = CustomerMatchResult(
         outcome=MatchOutcome.REVIEW_REQUIRED, reason=shared_reason
     )
@@ -225,7 +179,7 @@ def test_route_reason_is_not_duplicated_when_equal_to_customer_reason(
     decision = service.evaluate(
         customer_match=review_customer,
         route_resolution=RouteResolution(None, shared_reason),
-        item_results=(_item_match(product),),
+        items=_items("PEPIN PAN HOT DOG 8/1"),
         delivery_date=date(2026, 8, 10),
         order_number="4000326758",
     )

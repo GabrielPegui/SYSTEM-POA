@@ -1,89 +1,86 @@
-"""Tests for the matching contract (pre-Sprint 7).
+"""Tests for the customer matching contract.
 
-Verifies that ``MatchResult`` can express MATCHED / REVIEW_REQUIRED /
-NO_MATCH and that the ``ProductMatcher`` interface is the seam Sprint 7 will
-implement. No fuzzy logic lives here.
+Verifies that ``CustomerMatchResult`` can express MATCHED / REVIEW_REQUIRED /
+NO_MATCH and that the ``CustomerMatcher`` interface is the seam the catalog
+matcher implements. No fuzzy logic lives here.
 """
 
 import pytest
 
-from app.domain.document_processing.matching import MatchOutcome, MatchResult
-from app.domain.document_processing.purchase_order import PurchaseOrderItemDocument
-from app.domain.entities import Product
-from app.domain.interfaces import ProductMatcher
+from app.domain.document_processing.matching import CustomerMatchResult, MatchOutcome
+from app.domain.entities import Customer, Route
+from app.domain.interfaces import CustomerMatcher
+
+ROUTE = Route(code="PPN002", name="Ozama")
 
 
-def _product(code: str, description: str) -> Product:
-    return Product(code=code, description=description)
+def _customer(name: str = "JASON FAST FOOD") -> Customer:
+    return Customer(name=name, route=ROUTE)
 
 
-def test_match_result_matched_carries_product() -> None:
-    product = _product("01010101", "VIGA MEDIANA BLANCO PEPIN")
-    result = MatchResult(
+def test_match_result_matched_carries_customer() -> None:
+    customer = _customer()
+    result = CustomerMatchResult(
         outcome=MatchOutcome.MATCHED,
-        matched_product=product,
+        matched_customer=customer,
         confidence=0.98,
-        reason="Exact description match",
+        reason="Exact name match",
     )
 
     assert result.outcome is MatchOutcome.MATCHED
-    assert result.matched_product == product
+    assert result.matched_customer == customer
     assert result.confidence == 0.98
 
 
 def test_match_result_review_required_has_candidates() -> None:
-    candidates = (
-        _product("01010101", "BOLIN BURGUER"),
-        _product("01010102", "PAN BURGER"),
-    )
-    result = MatchResult(
+    candidates = (_customer(name="INVERSIONES LLERS"), _customer(name="MERCADAL GUARICANO"))
+    result = CustomerMatchResult(
         outcome=MatchOutcome.REVIEW_REQUIRED,
         candidates=candidates,
         reason="Multiple candidates with low confidence",
     )
 
     assert result.outcome is MatchOutcome.REVIEW_REQUIRED
-    assert result.matched_product is None
+    assert result.matched_customer is None
     assert len(result.candidates) == 2
 
 
 def test_match_result_no_match() -> None:
-    result = MatchResult(
+    result = CustomerMatchResult(
         outcome=MatchOutcome.NO_MATCH,
         reason="No candidate found in catalog",
     )
 
     assert result.outcome is MatchOutcome.NO_MATCH
-    assert result.matched_product is None
+    assert result.matched_customer is None
     assert result.candidates == ()
 
 
 def test_match_result_invariants() -> None:
-    with pytest.raises(ValueError, match="MATCHED requires a matched product"):
-        MatchResult(outcome=MatchOutcome.MATCHED)
+    with pytest.raises(ValueError, match="MATCHED requires a matched customer"):
+        CustomerMatchResult(outcome=MatchOutcome.MATCHED)
 
-    product = _product("01010101", "VIGA")
-    with pytest.raises(ValueError, match="Only MATCHED results may carry a matched product"):
-        MatchResult(outcome=MatchOutcome.NO_MATCH, matched_product=product)
+    customer = _customer()
+    with pytest.raises(ValueError, match="Only MATCHED results may carry a matched customer"):
+        CustomerMatchResult(outcome=MatchOutcome.NO_MATCH, matched_customer=customer)
 
 
-def test_product_matcher_cannot_be_instantiated() -> None:
+def test_customer_matcher_cannot_be_instantiated() -> None:
     with pytest.raises(TypeError):
-        ProductMatcher()
+        CustomerMatcher()
 
 
-def test_concrete_matcher_returns_match_result() -> None:
-    class ExactMatcher(ProductMatcher):
-        def match(self, item: PurchaseOrderItemDocument) -> MatchResult:
-            product = _product("01010101", item.description)
-            return MatchResult(
+def test_concrete_matcher_returns_customer_match_result() -> None:
+    class ExactMatcher(CustomerMatcher):
+        def match(self, customer_name: str | None) -> CustomerMatchResult:
+            return CustomerMatchResult(
                 outcome=MatchOutcome.MATCHED,
-                matched_product=product,
+                matched_customer=_customer(),
                 confidence=1.0,
+                reason=f"Exact name '{customer_name}'",
             )
 
-    matcher = ExactMatcher()
-    result = matcher.match(PurchaseOrderItemDocument(description="VIGA", quantity=6))
+    result = ExactMatcher().match("JASON FAST FOOD")
 
-    assert isinstance(result, MatchResult)
-    assert result.matched_product.description == "VIGA"
+    assert isinstance(result, CustomerMatchResult)
+    assert result.matched_customer.name == "JASON FAST FOOD"

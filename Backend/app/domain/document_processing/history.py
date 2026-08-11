@@ -5,9 +5,8 @@ attempt. It is intentionally a separate entity from ``Order`` (ADR-003):
 
 - Only a ``PROCESSED`` attempt creates an ``Order``.
 - ``REVIEW_REQUIRED`` / ``NO_MATCH`` / ``ERROR`` attempts must never create an
-  ``Order``, ``OrderItem``, ``Customer``, ``Route`` or ``Product``; they are
-  only recorded here so the business can audit every attempt and why it was
-  not persisted.
+  ``Order``, ``OrderItem``, ``Customer`` or ``Route``; they are only recorded
+  here so the business can audit every attempt and why it was not persisted.
 
 The record mirrors ``ProcessedOrderResult`` fields (status, reasons, order
 number, parser id, customer/route summary when available, item count) plus an

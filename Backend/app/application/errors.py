@@ -16,8 +16,17 @@ class ApplicationError(Exception):
 class CustomerNotFoundError(ApplicationError):
     """Raised when a customer referenced by the use case does not exist."""
 
-    def __init__(self, code: str) -> None:
-        super().__init__(f"Customer with code '{code}' was not found")
+    def __init__(self, name: str) -> None:
+        super().__init__(f"Customer '{name}' was not found in the catalog")
+
+
+class AmbiguousCustomerError(ApplicationError):
+    """Raised when a customer name matches more than one catalog customer."""
+
+    def __init__(self, name: str, routes: tuple[str, ...]) -> None:
+        super().__init__(
+            f"Customer '{name}' exists on more than one route: {', '.join(routes)}"
+        )
 
 
 class RouteNotFoundError(ApplicationError):
@@ -25,13 +34,6 @@ class RouteNotFoundError(ApplicationError):
 
     def __init__(self, code: str) -> None:
         super().__init__(f"Route with code '{code}' was not found")
-
-
-class ProductNotFoundError(ApplicationError):
-    """Raised when a product referenced by the use case does not exist."""
-
-    def __init__(self, code: str) -> None:
-        super().__init__(f"Product with code '{code}' was not found")
 
 
 class OrderNotFoundError(ApplicationError):

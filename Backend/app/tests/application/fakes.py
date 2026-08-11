@@ -8,13 +8,12 @@ They mirror the persistence behavior relevant to the use cases.
 from dataclasses import replace
 
 from app.domain.document_processing.history import ProcessingHistoryRecord
-from app.domain.entities import Customer, Order, Product, Route
+from app.domain.entities import Customer, Order, Route
 from app.domain.enums import OrderStatus
 from app.domain.interfaces.repositories import (
     CustomerRepository,
     OrderRepository,
     ProcessingHistoryRepository,
-    ProductRepository,
     RouteRepository,
 )
 
@@ -28,38 +27,26 @@ class InMemoryRouteRepository(RouteRepository):
     def get_by_code(self, code: str) -> Route | None:
         return self._by_code.get(code)
 
+    def list(self) -> list[Route]:
+        return sorted(self._by_code.values(), key=lambda r: r.code)
+
 
 class InMemoryCustomerRepository(CustomerRepository):
-    """Customer repository backed by a code -> Customer dict.
+    """Customer repository backed by an in-memory list.
 
-    ``get_by_rnc`` mirrors the real data: an RNC maps to many accounts
-    (``docs/ANALISIS_DATOS_MVP.md``), so it returns a tuple of customers.
+    ``get_by_name`` returns every customer with an exact name match (the
+    persistent uniqueness rule is ``(route, name)``, so the same name may
+    exist on more than one route).
     """
 
     def __init__(self, customers: list[Customer] | None = None) -> None:
-        self._by_code = {c.code: c for c in (customers or [])}
-
-    def get_by_code(self, code: str) -> Customer | None:
-        return self._by_code.get(code)
-
-    def get_by_rnc(self, rnc: str) -> tuple[Customer, ...]:
-        return tuple(c for c in self._by_code.values() if c.rnc == rnc)
+        self._all = list(customers or [])
 
     def list(self) -> list[Customer]:
-        return sorted(self._by_code.values(), key=lambda c: c.code)
+        return sorted(self._all, key=lambda c: c.name)
 
-
-class InMemoryProductRepository(ProductRepository):
-    """Product repository backed by a code -> Product dict."""
-
-    def __init__(self, products: list[Product] | None = None) -> None:
-        self._by_code = {p.code: p for p in (products or [])}
-
-    def get_by_code(self, code: str) -> Product | None:
-        return self._by_code.get(code)
-
-    def list(self) -> list[Product]:
-        return sorted(self._by_code.values(), key=lambda p: p.code)
+    def get_by_name(self, name: str) -> tuple[Customer, ...]:
+        return tuple(c for c in self._all if c.name == name)
 
 
 class InMemoryOrderRepository(OrderRepository):

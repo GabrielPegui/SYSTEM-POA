@@ -3,22 +3,22 @@
 Orchestrates the full purchase order workflow:
 
     PDF -> Reader -> Detector -> ParserRegistry -> Parser
-        -> CustomerMatcher -> RouteResolver -> ProductMatcher
+        -> CustomerMatcher -> RouteResolver
         -> OrderValidationService -> OrderRepository.save
 
 Every attempt is recorded in ``ProcessingHistory`` (ADR-003 audit/traceability)
 before the result is returned. The history entry reflects the FINAL outcome,
 including whether an ``Order`` was actually persisted:
 
-- ``PROCESSED``: customer, route and every item resolved; the order was
-  persisted with ``OrderStatus.PROCESSED`` and the history records it.
+- ``PROCESSED``: customer and route resolved; the order was persisted with
+  ``OrderStatus.PROCESSED`` and the history records it.
 - ``REVIEW_REQUIRED`` / ``NO_MATCH`` / ``ERROR``: nothing is persisted as an
   order; the attempt is recorded in history only.
 
 Safety rules (ADR-002/ADR-003):
 
 - Nothing is persisted when the document is not recognized, the customer or
-  route is not conclusive, or any item is NO_MATCH / REVIEW_REQUIRED.
+  route is not conclusive, or no items were extracted.
 - Matching never creates catalog entities; ``OrderRepository.save`` raises
   ``CatalogReferenceNotFoundError`` if a reference is missing, and that failure
   is reported as ERROR without partial persistence.
@@ -50,12 +50,11 @@ from app.domain.document_processing.exceptions import (
 )
 from app.domain.document_processing.history import ProcessingHistoryRecord
 from app.domain.document_processing.processing import (
-    ProcessedItemResult,
     ProcessedOrderResult,
     ProcessingStatus,
 )
 from app.domain.exceptions import CatalogReferenceNotFoundError, DomainError
-from app.domain.interfaces import CustomerMatcher, ProductMatcher
+from app.domain.interfaces import CustomerMatcher
 from app.domain.interfaces.repositories import (
     OrderRepository,
     ProcessingHistoryRepository,
@@ -74,7 +73,6 @@ class ProcessPurchaseOrder:
         detector: DocumentDetector,
         registry: ParserRegistry,
         customer_matcher: CustomerMatcher,
-        product_matcher: ProductMatcher,
         route_resolver: RouteResolver,
         validator: OrderValidationService,
         orders: OrderRepository,
@@ -84,7 +82,6 @@ class ProcessPurchaseOrder:
         self._detector = detector
         self._registry = registry
         self._customer_matcher = customer_matcher
-        self._product_matcher = product_matcher
         self._route_resolver = route_resolver
         self._validator = validator
         self._orders = orders
@@ -123,17 +120,13 @@ class ProcessPurchaseOrder:
             self._record_history(result)
             return result
 
-        customer_match = self._customer_matcher.match(document.customer_code, document.customer_name)
+        customer_match = self._customer_matcher.match(document.customer_name)
         route_resolution = self._route_resolver.resolve(customer_match)
-        item_results = tuple(
-            ProcessedItemResult(item=item, match=self._product_matcher.match(item))
-            for item in document.items
-        )
 
         decision = self._validator.evaluate(
             customer_match=customer_match,
             route_resolution=route_resolution,
-            item_results=item_results,
+            items=document.items,
             delivery_date=document.delivery_date,
             order_number=document.order_number,
         )
@@ -158,10 +151,12 @@ class ProcessPurchaseOrder:
             status=decision.status,
             order_number=document.order_number,
             delivery_date=document.delivery_date,
+            customer_code=document.customer_code,
+            customer_name=document.customer_name,
             customer_match=customer_match,
             route=route_resolution.route,
             route_reason=route_resolution.reason,
-            items=item_results,
+            items=document.items,
             reasons=decision.reasons,
             order=order,
         )
@@ -184,8 +179,8 @@ class ProcessPurchaseOrder:
             reasons=result.reasons,
             order_number=result.order_number,
             parser_id=result.parser_id,
-            customer_code=customer.code if customer else None,
-            customer_name=customer.name if customer else None,
+            customer_code=result.customer_code,
+            customer_name=customer.name if customer else result.customer_name,
             route_code=route.code if route else None,
             route_name=route.name if route else None,
             item_count=len(result.items),

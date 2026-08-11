@@ -24,15 +24,13 @@ class FakeOrdersApiService extends OrdersApiService {
             OrderListView(
               id: 1,
               orderNumber: 'ORD-999',
-              customerCode: 'CL001',
               customerName: 'Supermercado Central',
               routeCode: 'PPN101',
               deliveryDate: DateTime(2026, 8, 15),
               status: 'processed',
               items: const [
                 OrderItemView(
-                  productCode: 'P01',
-                  productDescription: 'Pan Pepin Blanco',
+                  description: 'Pan Pepin Blanco',
                   quantity: 50,
                 ),
               ],
@@ -49,8 +47,6 @@ class FakeOrdersApiService extends OrdersApiService {
                 OrderLineView(
                   description: 'PAN PEPIN HOT DOG 8/1',
                   quantity: 30,
-                  matchStatus: 'review_required',
-                  reason: 'Low confidence match',
                 ),
               ],
               receivedAt: DateTime(2026, 8, 8, 14, 0),
@@ -116,7 +112,7 @@ void main() {
     // Navigate to Revisión
     await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Revisión')));
     await tester.pumpAndSettle();
-    expect(find.text('Centro de revisión'), findsOneWidget);
+    expect(find.text('Revisión de órdenes'), findsOneWidget);
     expect(find.text('review_doc.pdf'), findsWidgets);
 
     // Navigate to Consolidación
@@ -151,7 +147,7 @@ void main() {
     expect(find.widgetWithText(OutlinedButton, 'Sincronizar backend'), findsNothing);
   });
 
-  testWidgets('consolidation page toggles between product, customer, route, date tabs', (WidgetTester tester) async {
+  testWidgets('consolidation page shows the Ruta + Fecha distribution with selectors and totals', (WidgetTester tester) async {
     setupDesktopView(tester);
     final fakeService = FakeOrdersApiService();
     final appState = AppState(service: fakeService);
@@ -162,20 +158,26 @@ void main() {
     await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Consolidación')));
     await tester.pumpAndSettle();
 
-    // Switch to Cliente tab
-    await tester.tap(find.text('Cliente'));
-    await tester.pumpAndSettle();
-    expect(find.text('Agrupación por cliente'), findsOneWidget);
+    // Dimensión única Ruta + Fecha: distribución por cliente y total por producto.
+    expect(find.text('Distribución por cliente'), findsOneWidget);
+    expect(find.text('Total por producto'), findsOneWidget);
+    expect(find.textContaining('Ruta PPN101'), findsOneWidget);
+    expect(find.text('Total general'), findsOneWidget);
+    // El total se repite en los tres niveles: subtotal cliente, total producto y barra general.
+    expect(find.text('50 unidades'), findsNWidgets(3));
 
-    // Switch to Ruta tab
-    await tester.tap(find.text('Ruta'));
+    // Selector combinado de ruta: filtrar por PPN101 conserva el grupo.
+    await tester.tap(find.text('Todas las rutas'));
     await tester.pumpAndSettle();
-    expect(find.text('Agrupación por ruta'), findsOneWidget);
+    await tester.tap(find.text('PPN101').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ruta PPN101'), findsOneWidget);
 
-    // Switch to Fecha tab
-    await tester.tap(find.text('Fecha'));
-    await tester.pumpAndSettle();
-    expect(find.text('Agrupación por fecha'), findsOneWidget);
+    // El botón de exportación está deshabilitado (exportación pendiente).
+    final exportButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Exportar'),
+    );
+    expect(exportButton.onPressed, isNull);
   });
 
   testWidgets('displays empty state panels when snapshot has no documents', (WidgetTester tester) async {
@@ -190,7 +192,7 @@ void main() {
     expect(find.text('Todavía no hay órdenes'), findsOneWidget);
   });
 
-  testWidgets('review center lets the operator correct and save a document', (WidgetTester tester) async {
+  testWidgets('review center lets the operator correct and approve a document', (WidgetTester tester) async {
     setupDesktopView(tester);
     final fakeService = FakeOrdersApiService();
     final appState = AppState(service: fakeService);
@@ -201,17 +203,21 @@ void main() {
     await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Revisión')));
     await tester.pumpAndSettle();
 
-    // La orden pendiente muestra el detalle editable con sus motivos.
-    expect(find.text('¿Qué requiere revisión?'), findsOneWidget);
-    expect(find.text('Guardar corrección'), findsOneWidget);
+    // La orden pendiente muestra la alerta operativa y las acciones accionables.
+    expect(find.text('Revisión pendiente'), findsOneWidget);
+    expect(find.text('Aprobar y enviar a consolidación'), findsOneWidget);
+    expect(find.text('Descartar orden'), findsOneWidget);
 
-    // La operadora corrige el cliente y guarda.
-    final customerField = find.byWidgetPredicate(
-      (widget) => widget is TextField && widget.decoration?.labelText == 'Cliente',
-    );
-    expect(customerField, findsOneWidget);
-    await tester.enterText(customerField, 'Supermercado Central');
-    await tester.tap(find.widgetWithText(FilledButton, 'Guardar corrección'));
+    // La operadora selecciona el cliente en el desplegable y aprueba la orden.
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Supermercado Central').last);
+    await tester.pumpAndSettle();
+
+    final approveButton = find.widgetWithText(FilledButton, 'Aprobar y enviar a consolidación');
+    await tester.ensureVisible(approveButton);
+    await tester.pumpAndSettle();
+    await tester.tap(approveButton);
     await tester.pumpAndSettle();
 
     // El documento sale de la bandeja de revisión y queda procesado.
@@ -223,4 +229,110 @@ void main() {
     expect(corrected.customerName, 'Supermercado Central');
     expect(corrected.status, OrderProcessingStatus.processed);
   });
+
+  testWidgets('consolidation defaults to the most recent date and never mixes dates', (WidgetTester tester) async {
+    setupDesktopView(tester);
+    final snapshot = _multiDateSnapshot();
+    final appState = AppState(service: FakeOrdersApiService(snapshot: snapshot));
+
+    await tester.pumpWidget(PurchaseOrderApp(appState: appState));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Consolidación')));
+    await tester.pumpAndSettle();
+
+    // No existe la opción "Todas las fechas": la fecha siempre viene seleccionada.
+    expect(find.text('Todas las fechas'), findsNothing);
+
+    // La fecha más reciente (12/08) está activa por defecto: las dos rutas de
+    // esa fecha se ven juntas y el grupo de la fecha anterior (10/08) no.
+    expect(find.textContaining('Ruta R1'), findsOneWidget);
+    expect(find.textContaining('Ruta R2'), findsOneWidget);
+    expect(find.text('10 unidades'), findsNothing);
+    expect(find.text('12 unidades'), findsOneWidget);
+  });
+
+  testWidgets('changing the delivery date updates routes and totals without mixing', (WidgetTester tester) async {
+    setupDesktopView(tester);
+    final snapshot = _multiDateSnapshot();
+    final appState = AppState(service: FakeOrdersApiService(snapshot: snapshot));
+
+    await tester.pumpWidget(PurchaseOrderApp(appState: appState));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Consolidación')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<DateTime>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aug 10, 2026').last);
+    await tester.pumpAndSettle();
+
+    // Solo existe la ruta R1 en la fecha anterior; R2 y sus unidades desaparecen.
+    expect(find.textContaining('Ruta R1'), findsOneWidget);
+    expect(find.textContaining('Ruta R2'), findsNothing);
+    expect(find.text('10 unidades'), findsWidgets);
+  });
+
+  testWidgets('configuration lists processed PDFs and clears the session after confirmation', (WidgetTester tester) async {
+    setupDesktopView(tester);
+    final fakeService = FakeOrdersApiService();
+    final appState = AppState(service: fakeService);
+
+    await tester.pumpWidget(PurchaseOrderApp(appState: appState));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Configuración')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PDFs procesados'), findsOneWidget);
+    expect(find.text('review_doc.pdf'), findsWidgets);
+
+    // Cancelar conserva la sesión.
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Vaciar data'));
+    await tester.pumpAndSettle();
+    expect(find.text('¿Vaciar la sesión?'), findsOneWidget);
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(find.text('review_doc.pdf'), findsWidgets);
+    expect(appState.documents, isNotEmpty);
+
+    // Confirmar vacía la sesión pero conserva lo persistido en el backend.
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Vaciar data'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vaciar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Aún no se procesaron PDFs'), findsOneWidget);
+    expect(find.text('review_doc.pdf'), findsNothing);
+    expect(appState.snapshot.sessionDocuments, isEmpty);
+    expect(appState.persistedOrders, isNotEmpty);
+  });
+}
+
+OverviewSnapshot _multiDateSnapshot() {
+  ProcessedDocumentView doc(String file, String route, DateTime date, int qty) {
+    return ProcessedDocumentView(
+      sourceFilename: file,
+      parserId: 'p1',
+      documentType: 'po',
+      status: OrderProcessingStatus.processed,
+      customerName: 'Cliente X',
+      routeCode: route,
+      deliveryDate: date,
+      reasons: const [],
+      items: [OrderLineView(description: 'Pan Pepin Blanco', quantity: qty)],
+    );
+  }
+
+  return OverviewSnapshot(
+    persistedOrders: const [],
+    sessionDocuments: [
+      doc('older.pdf', 'R1', DateTime(2026, 8, 10), 10),
+      doc('recent_r1.pdf', 'R1', DateTime(2026, 8, 12), 5),
+      doc('recent_r2.pdf', 'R2', DateTime(2026, 8, 12), 7),
+    ],
+    usingDemoData: false,
+    bannerMessage: 'Multi-fecha para testing',
+  );
 }

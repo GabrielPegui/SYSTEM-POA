@@ -15,17 +15,17 @@ def test_reader_is_abstract() -> None:
 
 
 def test_pdfplumber_reader_reads_text_pdf(reader: PdfplumberPDFReader, samples_dir: Path) -> None:
-    raw = reader.read(samples_dir / "4000326734.pdf")
+    raw = reader.read(samples_dir / "OLE.pdf")
 
     assert isinstance(raw, RawDocumentData)
-    assert raw.filename == "4000326734.pdf"
+    assert raw.filename == "OLE.pdf"
     assert raw.page_count == 1
     assert "Pedido de compra" in raw.full_text
     assert raw.producer is not None
 
 
 def test_pdfplumber_reader_reads_multipage_pdf(reader: PdfplumberPDFReader, samples_dir: Path) -> None:
-    raw = reader.read(samples_dir / "CDE_1_2069_20260801075602_2.PDF")
+    raw = reader.read(samples_dir / "carrefour.PDF")
 
     assert raw.page_count == 2
     assert [page.page_number for page in raw.pages] == [1, 2]
@@ -33,7 +33,7 @@ def test_pdfplumber_reader_reads_multipage_pdf(reader: PdfplumberPDFReader, samp
 
 
 def test_pdfplumber_reader_keeps_per_page_text(reader: PdfplumberPDFReader, samples_dir: Path) -> None:
-    raw = reader.read(samples_dir / "Orden de Compra 4505261004.pdf")
+    raw = reader.read(samples_dir / "plazalama.pdf")
 
     first, second = raw.pages
     assert "Plaza Lama" in first.text
@@ -55,7 +55,7 @@ def test_pdfplumber_reader_keeps_positional_words(reader: PdfplumberPDFReader, s
 
 def test_pdfplumber_reader_raises_on_scanned_pdf(reader: PdfplumberPDFReader, samples_dir: Path) -> None:
     with pytest.raises(PDFNoTextError):
-        reader.read(samples_dir / "20260803140205892.pdf")
+        reader.read(samples_dir / "imagen en pdf 1.pdf")
 
 
 def test_pdfplumber_reader_raises_on_missing_file(reader: PdfplumberPDFReader, samples_dir: Path) -> None:

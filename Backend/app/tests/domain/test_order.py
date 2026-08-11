@@ -37,19 +37,19 @@ def test_order_relationship_to_customer(order, customer) -> None:
     assert order.customer.route.code == "PPN002"
 
 
-def test_order_items_expose_products(order, product) -> None:
+def test_order_items_expose_descriptions(order) -> None:
     item = order.items[0]
 
-    assert item.product is product
-    assert item.product.code == "01010101"
+    assert item.description == "VIGA MEDIANA BLANCO PEPIN"
+    assert item.quantity == 6
 
 
-def test_order_with_multiple_items(customer, product) -> None:
+def test_order_with_multiple_items(customer) -> None:
     order = Order(
         order_number="12654",
         customer=customer,
         delivery_date=date(2026, 8, 11),
-        items=(_item(product, 6), _item(product, 12)),
+        items=(_item("PAN HOT DOG", 6), _item("VIGA BLANCA", 12)),
     )
 
     assert len(order.items) == 2
@@ -97,7 +97,7 @@ def test_order_without_items_raises(customer) -> None:
         )
 
 
-def _item(product, quantity):
+def _item(description, quantity):
     from app.domain.entities import OrderItem
 
-    return OrderItem(product=product, quantity=quantity)
+    return OrderItem(description=description, quantity=quantity)

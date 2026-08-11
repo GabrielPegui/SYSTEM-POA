@@ -35,7 +35,6 @@ class StubCorrectionService extends OrdersApiService {
           OrderLineView(
             description: 'PAN PEPIN HOT DOG 8/1',
             quantity: 30,
-            matchStatus: 'review_required',
           ),
         ],
       ),
@@ -123,7 +122,6 @@ void main() {
           OrderLineView(
             description: 'PAN PEPIN HOT DOG 8/1',
             quantity: 45,
-            matchStatus: 'matched',
           ),
         ],
       );
@@ -193,6 +191,56 @@ void main() {
 
       expect(state.processedDocuments, hasLength(1));
       expect(state.processedDocuments.single.customerName, 'CLIENTE A');
+    });
+  });
+
+  group('AppState.discardDocument', () {
+    test('removes a pending document from the session', () async {
+      final state = AppState(service: StubCorrectionService());
+
+      await state.processFiles([
+        _file('a.pdf'),
+        _file('b.pdf'),
+      ]);
+
+      expect(state.reviewQueue, hasLength(2));
+
+      final toDiscard = state.reviewQueue.first;
+      state.discardDocument(toDiscard);
+
+      expect(state.reviewQueue, hasLength(1));
+      expect(
+        state.documents.any((d) => d.sourceFilename == toDiscard.sourceFilename),
+        isFalse,
+      );
+    });
+
+    test('selects the next pending document after discarding', () async {
+      final state = AppState(service: StubCorrectionService());
+
+      await state.processFiles([
+        _file('a.pdf'),
+        _file('b.pdf'),
+      ]);
+
+      final first = state.reviewQueue.first;
+      final second = state.reviewQueue.last;
+      state.discardDocument(first);
+
+      expect(state.selectedDocument?.sourceFilename, second.sourceFilename);
+    });
+
+    test('clears the selection when the queue becomes empty', () async {
+      final state = AppState(service: StubCorrectionService());
+
+      await state.processFiles([
+        _file('unica.pdf'),
+      ]);
+
+      state.discardDocument(state.reviewQueue.single);
+
+      expect(state.reviewQueue, isEmpty);
+      expect(state.selectedDocument, isNull);
     });
   });
 }

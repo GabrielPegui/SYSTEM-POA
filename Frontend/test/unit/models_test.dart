@@ -27,27 +27,14 @@ void main() {
         'description': 'PAN PEPIN BLANCO 24/1',
         'quantity': 50,
         'pdf_code': '7461234567890',
-        'match_status': 'exact_match',
-        'product_code': '01010101',
-        'product_description': 'PEPIN VIGA MEDIANA BLANCO',
-        'confidence': 0.98,
-        'reason': 'Exact match',
-        'candidates': [
-          {'code': '01010101', 'description': 'PEPIN VIGA MEDIANA BLANCO'}
-        ],
+        'ean': '07461234567890',
       };
 
       final line = OrderLineView.fromProcessedJson(json);
       expect(line.description, 'PAN PEPIN BLANCO 24/1');
       expect(line.quantity, 50);
       expect(line.pdfCode, '7461234567890');
-      expect(line.matchStatus, 'exact_match');
-      expect(line.productCode, '01010101');
-      expect(line.productDescription, 'PEPIN VIGA MEDIANA BLANCO');
-      expect(line.confidence, 0.98);
-      expect(line.reason, 'Exact match');
-      expect(line.candidates, hasLength(1));
-      expect(line.candidates.first, contains('01010101'));
+      expect(line.ean, '07461234567890');
     });
 
     test('handles missing or nullable fields gracefully', () {
@@ -55,9 +42,8 @@ void main() {
       final line = OrderLineView.fromProcessedJson(json);
       expect(line.description, '');
       expect(line.quantity, 0);
-      expect(line.productCode, isNull);
-      expect(line.confidence, isNull);
-      expect(line.candidates, isEmpty);
+      expect(line.pdfCode, isNull);
+      expect(line.ean, isNull);
     });
   });
 
@@ -66,7 +52,6 @@ void main() {
       final json = {
         'id': 1,
         'order_number': 'ORD-1',
-        'customer_code': 'CL001',
         'customer_name': 'Cliente A',
         'route_code': 'R01',
         'delivery_date': '2026-08-15',
@@ -82,7 +67,6 @@ void main() {
       final json = {
         'id': 2,
         'order_number': 'ORD-2',
-        'customer_code': 'CL002',
         'customer_name': 'Cliente B',
         'route_code': 'R02',
         'status': 'review_required',
@@ -94,6 +78,27 @@ void main() {
 
       final invalid = OrderListView.fromJson({...json, 'delivery_date': 'no-es-una-fecha'});
       expect(invalid.deliveryDate, isNull);
+    });
+
+    test('parses items without product codes', () {
+      final json = {
+        'id': 3,
+        'order_number': 'ORD-3',
+        'customer_name': 'Cliente C',
+        'route_code': 'R03',
+        'delivery_date': '2026-08-15',
+        'status': 'processed',
+        'items': [
+          {'description': 'PAN PEPIN HOT DOG 8/1', 'quantity': 27, 'pdf_code': '7461', 'ean': '007461'},
+        ],
+      };
+
+      final order = OrderListView.fromJson(json);
+      expect(order.items, hasLength(1));
+      expect(order.items.first.description, 'PAN PEPIN HOT DOG 8/1');
+      expect(order.items.first.quantity, 27);
+      expect(order.items.first.pdfCode, '7461');
+      expect(order.items.first.ean, '007461');
     });
   });
 
@@ -116,9 +121,7 @@ void main() {
           {
             'description': 'PAN PEPIN HOT DOG 8/1',
             'quantity': 100,
-            'match_status': 'matched',
-            'product_code': '02010101',
-            'product_description': 'PEPIN PAN HOT DOG 8/1',
+            'pdf_code': '7461123456',
           }
         ],
       };
@@ -176,7 +179,7 @@ void main() {
       expect(snapshot.totalIncoming, 3);
     });
 
-    test('consolidates processed documents across 4 perspectives', () {
+    test('consolidates processed documents across perspectives', () {
       final doc1 = ProcessedDocumentView(
         sourceFilename: 'doc1.pdf',
         parserId: 'p1',
@@ -191,9 +194,6 @@ void main() {
           OrderLineView(
             description: 'Pan Pepin 8/1',
             quantity: 30,
-            matchStatus: 'matched',
-            productCode: 'P01',
-            productDescription: 'Pan Pepin 8/1',
           ),
         ],
       );
@@ -212,9 +212,6 @@ void main() {
           OrderLineView(
             description: 'Pan Pepin 8/1',
             quantity: 20,
-            matchStatus: 'matched',
-            productCode: 'P01',
-            productDescription: 'Pan Pepin 8/1',
           ),
         ],
       );
@@ -228,10 +225,10 @@ void main() {
 
       // By Product
       final byProd = snapshot.consolidateByProduct();
-      expect(byProd.containsKey('P01'), isTrue);
-      expect(byProd['P01']!.totalQuantity, 50);
-      expect(byProd['P01']!.customers, containsAll(['Cliente A', 'Cliente B']));
-      expect(byProd['P01']!.routes, contains('R01'));
+      expect(byProd.containsKey('pan pepin 8/1'), isTrue);
+      expect(byProd['pan pepin 8/1']!.totalQuantity, 50);
+      expect(byProd['pan pepin 8/1']!.customers, containsAll(['Cliente A', 'Cliente B']));
+      expect(byProd['pan pepin 8/1']!.routes, contains('R01'));
 
       // By Customer
       final byCust = snapshot.consolidateByCustomer();
@@ -244,10 +241,168 @@ void main() {
       expect(byRoute.containsKey('R01'), isTrue);
       expect(byRoute['R01']!.totalQuantity, 50);
 
-      // By Date
-      final byDate = snapshot.consolidateByDate();
-      expect(byDate.containsKey('2026-08-12'), isTrue);
-      expect(byDate['2026-08-12']!.totalQuantity, 50);
+      // By Route + Date
+      final groups = snapshot.consolidateByRouteAndDate();
+      expect(groups, hasLength(1));
+      final group = groups.single;
+      expect(group.routeCode, 'R01');
+      expect(group.deliveryDate, DateTime(2026, 8, 12));
+      expect(group.customers, hasLength(2));
+      expect(group.totalQuantity, 50);
+      expect(group.orderCount, 2);
+      final productTotal = group.productTotals.single;
+      expect(productTotal.productLabel, 'Pan Pepin 8/1');
+      expect(productTotal.quantity, 50);
+    });
+
+    test('route+date consolidation breaks down per customer with totals', () {
+      ProcessedDocumentView doc(String file, String customer, List<OrderLineView> items) {
+        return ProcessedDocumentView(
+          sourceFilename: file,
+          parserId: 'p1',
+          documentType: 'po',
+          status: OrderProcessingStatus.processed,
+          customerName: customer,
+          routeCode: '200',
+          deliveryDate: DateTime(2026, 8, 12),
+          reasons: const [],
+          items: items,
+        );
+      }
+
+      final snapshot = OverviewSnapshot(
+        persistedOrders: const [],
+        sessionDocuments: [
+          doc('a.pdf', 'Cliente A', const [
+            OrderLineView(description: 'Pan', quantity: 20),
+            OrderLineView(description: 'Queso', quantity: 10),
+            OrderLineView(description: 'Limón', quantity: 5),
+          ]),
+          doc('b.pdf', 'Cliente B', const [
+            OrderLineView(description: 'Pan', quantity: 20),
+            OrderLineView(description: 'Queso', quantity: 15),
+          ]),
+        ],
+        usingDemoData: false,
+        bannerMessage: '',
+      );
+
+      final groups = snapshot.consolidateByRouteAndDate();
+      expect(groups, hasLength(1));
+      final group = groups.single;
+
+      final totals = {for (final p in group.productTotals) p.productLabel: p.quantity};
+      expect(totals, {'Pan': 40, 'Queso': 25, 'Limón': 5});
+      expect(group.totalQuantity, 70);
+      expect(group.customers, hasLength(2));
+
+      final customerA = group.customers.singleWhere((c) => c.customerName == 'Cliente A');
+      expect(customerA.totalQuantity, 35);
+      expect(customerA.orderCount, 1);
+    });
+
+    test('counts each order once across session documents and persisted orders', () {
+      final sessionDoc = ProcessedDocumentView(
+        sourceFilename: 'a.pdf',
+        parserId: 'p1',
+        documentType: 'po',
+        status: OrderProcessingStatus.processed,
+        orderNumber: 'ORD-1',
+        customerName: 'Cliente A',
+        routeCode: 'R1',
+        deliveryDate: DateTime(2026, 8, 12),
+        reasons: const [],
+        items: const [OrderLineView(description: 'Pan', quantity: 10)],
+      );
+      final persistedOrder = OrderListView(
+        id: 1,
+        orderNumber: 'ORD-1',
+        customerName: 'Cliente A',
+        routeCode: 'R1',
+        deliveryDate: DateTime(2026, 8, 12),
+        status: 'processed',
+        items: const [OrderItemView(description: 'Pan', quantity: 10)],
+      );
+
+      final snapshot = OverviewSnapshot(
+        persistedOrders: [persistedOrder],
+        sessionDocuments: [sessionDoc],
+        usingDemoData: false,
+        bannerMessage: '',
+      );
+
+      expect(snapshot.documents, hasLength(1));
+      final group = snapshot.consolidateByRouteAndDate().single;
+      expect(group.totalQuantity, 10);
+      expect(group.orderCount, 1);
+      expect(group.customers.single.orderCount, 1);
+    });
+
+    test('the same route splits into separate groups per delivery date', () {
+      ProcessedDocumentView doc(String file, DateTime date, int qty) {
+        return ProcessedDocumentView(
+          sourceFilename: file,
+          parserId: 'p1',
+          documentType: 'po',
+          status: OrderProcessingStatus.processed,
+          customerName: 'Cliente X',
+          routeCode: 'R1',
+          deliveryDate: date,
+          reasons: const [],
+          items: [OrderLineView(description: 'Pan', quantity: qty)],
+        );
+      }
+
+      final snapshot = OverviewSnapshot(
+        persistedOrders: const [],
+        sessionDocuments: [
+          doc('older.pdf', DateTime(2026, 8, 10), 10),
+          doc('recent.pdf', DateTime(2026, 8, 12), 5),
+        ],
+        usingDemoData: false,
+        bannerMessage: '',
+      );
+
+      final groups = snapshot.consolidateByRouteAndDate();
+      expect(groups, hasLength(2));
+      final groupsByDate = {
+        for (final g in groups) g.deliveryDate: g,
+      };
+      expect(groupsByDate[DateTime(2026, 8, 12)]!.totalQuantity, 5);
+      expect(groupsByDate[DateTime(2026, 8, 10)]!.totalQuantity, 10);
+    });
+
+    test('two routes on the same delivery date stay in separate route groups', () {
+      ProcessedDocumentView doc(String file, String route, int qty) {
+        return ProcessedDocumentView(
+          sourceFilename: file,
+          parserId: 'p1',
+          documentType: 'po',
+          status: OrderProcessingStatus.processed,
+          customerName: 'Cliente X',
+          routeCode: route,
+          deliveryDate: DateTime(2026, 8, 12),
+          reasons: const [],
+          items: [OrderLineView(description: 'Pan', quantity: qty)],
+        );
+      }
+
+      final snapshot = OverviewSnapshot(
+        persistedOrders: const [],
+        sessionDocuments: [
+          doc('r1.pdf', 'R1', 5),
+          doc('r2.pdf', 'R2', 7),
+        ],
+        usingDemoData: false,
+        bannerMessage: '',
+      );
+
+      final groups = snapshot.consolidateByRouteAndDate();
+      expect(groups, hasLength(2));
+      final totals = {
+        for (final g in groups) g.routeCode: g.totalQuantity,
+      };
+      expect(totals, {'R1': 5, 'R2': 7});
     });
   });
 }

@@ -153,5 +153,85 @@ void main() {
       expect(state.documents, hasLength(1));
       expect(state.documents.single.sourceFilename, 'a.pdf');
     });
+
+    test('re-importing the same filename replaces its quantities in consolidation', () async {
+      var callCount = 0;
+      final service = StubOrdersApiService((filename) async {
+        callCount++;
+        return ProcessedDocumentView(
+          sourceFilename: filename,
+          parserId: 'test',
+          documentType: 'po',
+          status: OrderProcessingStatus.processed,
+          customerName: 'Cliente A',
+          routeCode: 'R1',
+          deliveryDate: DateTime(2026, 8, 12),
+          reasons: const [],
+          items: [OrderLineView(description: 'Pan', quantity: callCount * 10)],
+        );
+      });
+      final state = AppState(service: service);
+
+      await state.processFiles([
+        PlatformFile(name: 'a.pdf', size: 1, bytes: Uint8List.fromList([1])),
+        PlatformFile(name: 'a.pdf', size: 1, bytes: Uint8List.fromList([2])),
+      ]);
+
+      expect(state.documents, hasLength(1));
+      final groups = state.consolidatedByRouteAndDate;
+      expect(groups, hasLength(1));
+      expect(groups.single.totalQuantity, 20);
+      expect(groups.single.orderCount, 1);
+    });
+
+    test('importing different filenames keeps separate orders and sums quantities', () async {
+      final quantities = <String, int>{'a.pdf': 10, 'b.pdf': 20};
+      final service = StubOrdersApiService((filename) async {
+        return ProcessedDocumentView(
+          sourceFilename: filename,
+          parserId: 'test',
+          documentType: 'po',
+          status: OrderProcessingStatus.processed,
+          customerName: 'Cliente A',
+          routeCode: 'R1',
+          deliveryDate: DateTime(2026, 8, 12),
+          reasons: const [],
+          items: [OrderLineView(description: 'Pan', quantity: quantities[filename]!)],
+        );
+      });
+      final state = AppState(service: service);
+
+      await state.processFiles([
+        PlatformFile(name: 'a.pdf', size: 1, bytes: Uint8List.fromList([1])),
+        PlatformFile(name: 'b.pdf', size: 1, bytes: Uint8List.fromList([2])),
+      ]);
+
+      expect(state.documents, hasLength(2));
+      final groups = state.consolidatedByRouteAndDate;
+      expect(groups, hasLength(1));
+      expect(groups.single.totalQuantity, 30);
+      expect(groups.single.orderCount, 2);
+    });
+
+    test('clearing the session empties documents but keeps persisted orders', () async {
+      final service = StubOrdersApiService(
+        (filename) async => _doc(filename, OrderProcessingStatus.processed),
+      );
+      final state = AppState(service: service);
+
+      await state.processFiles([
+        PlatformFile(name: 'a.pdf', size: 1, bytes: Uint8List.fromList([1])),
+        PlatformFile(name: 'b.pdf', size: 1, bytes: Uint8List.fromList([2])),
+      ]);
+
+      expect(state.documents, hasLength(2));
+
+      state.clearSession();
+
+      expect(state.documents, isEmpty);
+      expect(state.snapshot.sessionDocuments, isEmpty);
+      expect(state.selectedDocument, isNull);
+      expect(state.batchSummary, isNull);
+    });
   });
 }

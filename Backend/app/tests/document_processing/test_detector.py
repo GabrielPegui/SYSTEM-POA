@@ -11,13 +11,13 @@ from app.infrastructure.document_processing.reader import PdfplumberPDFReader
 from app.infrastructure.document_processing.signatures import DEFAULT_SIGNATURES
 
 EXPECTED_DOCUMENTS: tuple[tuple[str, DocumentType], ...] = (
-    ("4000326734.pdf", DocumentType.MERCADAL),
-    ("4000326758.pdf", DocumentType.MERCADAL),
+    ("OLE.pdf", DocumentType.MERCADAL),
+    ("mercadal.pdf", DocumentType.MERCADAL),
     ("BOLIN 4012234.pdf", DocumentType.HILTON),
-    ("CDE_1_2069_20260801075602_2.PDF", DocumentType.CDE_HYPER),
+    ("carrefour.PDF", DocumentType.CDE_HYPER),
     ("Orden de Pedido por e-mail.pdf", DocumentType.JUMBO),
-    ("pedido-03-08-2026-12653-bravo.pdf", DocumentType.BRAVO),
-    ("Orden de Compra 4505261004.pdf", DocumentType.PLAZA_LAMA),
+    ("bravo.pdf", DocumentType.BRAVO),
+    ("plazalama.pdf", DocumentType.PLAZA_LAMA),
 )
 
 

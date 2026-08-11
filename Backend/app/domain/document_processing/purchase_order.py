@@ -5,9 +5,9 @@ format-specific parser must return, regardless of the original document
 structure.
 
 The parser only extracts the information that actually exists in the PDF. It
-never matches against the database, never decides which catalog ``Product``
-corresponds and never creates entities. Correspondence is a separate step
-handled by ``ProductMatcher`` before any persistence happens.
+never matches against the database and never creates entities. Correspondence
+(customer -> route) is a separate step handled by ``CustomerMatcher`` before
+any persistence happens; item lines keep the description exactly as printed.
 """
 
 from dataclasses import dataclass

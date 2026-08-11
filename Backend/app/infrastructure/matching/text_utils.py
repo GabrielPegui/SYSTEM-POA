@@ -39,17 +39,39 @@ def normalize_text(text: str) -> str:
 
 
 def token_set(text: str) -> frozenset[str]:
-    """Return normalized tokens with gender-stemmed variants.
+    """Return normalized tokens with gender/plural-stemmed variants.
 
     For every word ending in ``a``/``o`` the stem (word minus final letter) is
-    added, so masculine/feminine spellings compare equal. Short words are left
-    untouched to avoid noise.
+    added and for every plural ending in ``s`` the singular is added, so
+    masculine/feminine and singular/plural spellings compare equal. Short
+    words are left untouched to avoid noise.
     """
     tokens: set[str] = set(normalize_text(text).split())
     for token in list(tokens):
-        if len(token) > 3 and token[-1] in "ao":
-            tokens.add(token[:-1])
+        if len(token) > 3:
+            if token[-1] in "ao":
+                tokens.add(token[:-1])
+            if token.endswith("s"):
+                tokens.add(token[:-1])
     return frozenset(tokens)
+
+
+def informative_token_set(text: str) -> frozenset[str]:
+    """Informative tokens (no connectives/address words) plus stem variants.
+
+    Combines ``informative_tokens`` with the gender/plural stems of
+    ``token_set`` so name matching ignores both stop/address words and
+    inflection differences (e.g. ``Mercadal Guaricanos`` matches
+    ``MERCADAL GUARICANO``).
+    """
+    base = set(informative_tokens(text))
+    for token in list(base):
+        if len(token) > 3:
+            if token[-1] in "ao":
+                base.add(token[:-1])
+            if token.endswith("s"):
+                base.add(token[:-1])
+    return frozenset(base)
 
 
 def jaccard(a: frozenset[str], b: frozenset[str]) -> float:

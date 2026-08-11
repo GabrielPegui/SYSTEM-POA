@@ -10,14 +10,13 @@ import pytest
 from app.domain.interfaces import (
     CustomerRepository,
     OrderRepository,
-    ProductRepository,
     RouteRepository,
 )
 
 
 @pytest.mark.parametrize(
     "contract",
-    [RouteRepository, CustomerRepository, ProductRepository, OrderRepository],
+    [RouteRepository, CustomerRepository, OrderRepository],
 )
 def test_repository_contracts_are_abstract(contract) -> None:
     with pytest.raises(TypeError):
@@ -27,5 +26,4 @@ def test_repository_contracts_are_abstract(contract) -> None:
 def test_repository_contracts_are_importable() -> None:
     assert RouteRepository.__name__ == "RouteRepository"
     assert CustomerRepository.__name__ == "CustomerRepository"
-    assert ProductRepository.__name__ == "ProductRepository"
     assert OrderRepository.__name__ == "OrderRepository"

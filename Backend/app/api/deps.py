@@ -24,12 +24,10 @@ from app.infrastructure.document_processing.parsers.registry import ParserRegist
 from app.infrastructure.document_processing.reader import PdfplumberPDFReader
 from app.infrastructure.document_processing.signatures import DEFAULT_SIGNATURES
 from app.infrastructure.matching.catalog_customer_matcher import CatalogCustomerMatcher
-from app.infrastructure.matching.catalog_product_matcher import CatalogProductMatcher
 from app.infrastructure.repositories import (
     SqlAlchemyCustomerRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyProcessingHistoryRepository,
-    SqlAlchemyProductRepository,
     SqlAlchemyRouteRepository,
 )
 
@@ -56,11 +54,6 @@ def get_customer_repository(db: DbSession):
     return SqlAlchemyCustomerRepository(_require_session(db))
 
 
-def get_product_repository(db: DbSession):
-    """Provide the product repository bound to the request session."""
-    return SqlAlchemyProductRepository(_require_session(db))
-
-
 def get_order_repository(db: DbSession):
     """Provide the order repository bound to the request session."""
     return SqlAlchemyOrderRepository(_require_session(db))
@@ -72,13 +65,11 @@ def get_processing_history_repository(db: DbSession):
 
 
 def get_create_order(
-    routes=Depends(get_route_repository),
     customers=Depends(get_customer_repository),
-    products=Depends(get_product_repository),
     orders=Depends(get_order_repository),
 ) -> CreateOrder:
     """Provide the CreateOrder use case."""
-    return CreateOrder(customers, routes, products, orders)
+    return CreateOrder(customers, orders)
 
 
 def get_get_order(orders=Depends(get_order_repository)) -> GetOrder:
@@ -111,11 +102,6 @@ def get_parser_registry() -> ParserRegistry:
     return _registry
 
 
-def get_product_matcher(products=Depends(get_product_repository)) -> CatalogProductMatcher:
-    """Provide the catalog product matcher bound to the request session."""
-    return CatalogProductMatcher(products)
-
-
 def get_customer_matcher(customers=Depends(get_customer_repository)) -> CatalogCustomerMatcher:
     """Provide the catalog customer matcher bound to the request session."""
     return CatalogCustomerMatcher(customers)
@@ -136,7 +122,6 @@ def get_process_purchase_order(
     detector=Depends(get_detector),
     registry=Depends(get_parser_registry),
     customer_matcher=Depends(get_customer_matcher),
-    product_matcher=Depends(get_product_matcher),
     route_resolver=Depends(get_route_resolver),
     validator=Depends(get_order_validation_service),
     orders=Depends(get_order_repository),
@@ -148,7 +133,6 @@ def get_process_purchase_order(
         detector,
         registry,
         customer_matcher,
-        product_matcher,
         route_resolver,
         validator,
         orders,
@@ -169,8 +153,6 @@ __all__ = [
     "get_parser_registry",
     "get_process_purchase_order",
     "get_processing_history_repository",
-    "get_product_matcher",
-    "get_product_repository",
     "get_reader",
     "get_route_repository",
     "get_route_resolver",

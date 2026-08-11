@@ -5,14 +5,14 @@ They let the application layer depend on abstractions and stay unaware of
 the persistence technology (ADR-001, ADR-003).
 
 The method sets below are the minimal ones needed by the known business
-flow (identifying routes, customers and products from documents, and
-persisting orders). They will be refined when use cases are implemented.
+flow (identifying routes and customers from documents, and persisting
+orders). They will be refined when use cases are implemented.
 """
 
 from abc import ABC, abstractmethod
 
 from app.domain.document_processing.history import ProcessingHistoryRecord
-from app.domain.entities import Customer, Order, Product, Route
+from app.domain.entities import Customer, Order, Route
 from app.domain.enums import OrderStatus
 
 
@@ -23,45 +23,27 @@ class RouteRepository(ABC):
     def get_by_code(self, code: str) -> Route | None:
         """Return the route matching the given code, or None."""
 
+    @abstractmethod
+    def list(self) -> list[Route]:
+        """Return the full route catalog."""
+
 
 class CustomerRepository(ABC):
     """Contract to retrieve customers.
 
-    ``get_by_rnc`` is needed because the RNC is not a unique identifier
-    (``docs/ANALISIS_DATOS_MVP.md``): a single RNC maps to many accounts, so
-    the customer matcher must be able to narrow candidates by RNC and then
-    disambiguate with the extracted name. ``list`` supports name-based
-    matching when the document carries no code/RNC.
+    ``list`` supports name-based matching against the full catalog (the MVP
+    matches customers by name from ``CLIENTES POR RUTA.xlsx``). ``get_by_name``
+    supports the manual registration flow; it may return more than one customer
+    because equal names can exist on different routes.
     """
-
-    @abstractmethod
-    def get_by_code(self, code: str) -> Customer | None:
-        """Return the customer matching the given code, or None."""
-
-    @abstractmethod
-    def get_by_rnc(self, rnc: str) -> tuple[Customer, ...]:
-        """Return every customer matching the given RNC (may be empty)."""
 
     @abstractmethod
     def list(self) -> list[Customer]:
         """Return the full customer catalog."""
 
-
-class ProductRepository(ABC):
-    """Contract to retrieve products from the fixed catalog.
-
-    ``list`` supports description-based matching against the full catalog
-    (the MVP matches by description per ADR-003, since the PDF codes/EANs do
-    not correspond to the catalog keys).
-    """
-
     @abstractmethod
-    def get_by_code(self, code: str) -> Product | None:
-        """Return the product matching the given code, or None."""
-
-    @abstractmethod
-    def list(self) -> list[Product]:
-        """Return the full product catalog."""
+    def get_by_name(self, name: str) -> tuple[Customer, ...]:
+        """Return every customer whose name matches exactly (may be empty)."""
 
 
 class OrderRepository(ABC):

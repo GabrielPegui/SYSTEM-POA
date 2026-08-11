@@ -18,14 +18,12 @@ from app.infrastructure.persistence.models import (
     OrderItemModel,
     OrderModel,
     ProcessingHistoryModel,
-    ProductModel,
     RouteModel,
 )
 from app.infrastructure.repositories import (
     SqlAlchemyCustomerRepository,
     SqlAlchemyOrderRepository,
     SqlAlchemyProcessingHistoryRepository,
-    SqlAlchemyProductRepository,
     SqlAlchemyRouteRepository,
 )
 
@@ -46,30 +44,39 @@ def test_route_repository_get_by_code_missing(session) -> None:
     assert SqlAlchemyRouteRepository(session).get_by_code("PPN999") is None
 
 
-def test_customer_repository_returns_route(session, route, customer) -> None:
+def test_route_repository_list(session, route) -> None:
+    session.add(RouteModel(code=route.code, name=route.name))
+    session.commit()
+
+    result = SqlAlchemyRouteRepository(session).list()
+
+    assert [item.code for item in result] == [route.code]
+
+
+def test_customer_repository_get_by_name_returns_route(session, route, customer) -> None:
     route_model = RouteModel(code=route.code, name=route.name)
     session.add(route_model)
     session.flush()
-    session.add(CustomerModel(code=customer.code, name=customer.name, route_id=route_model.id))
+    session.add(
+        CustomerModel(
+            name=customer.name,
+            route_id=route_model.id,
+            address=customer.address,
+        )
+    )
     session.commit()
 
-    result = SqlAlchemyCustomerRepository(session).get_by_code(customer.code)
+    result = SqlAlchemyCustomerRepository(session).get_by_name(customer.name)
 
-    assert result is not None
-    assert result.code == customer.code
-    assert result.route.code == route.code
-    assert result.id is not None
+    assert len(result) == 1
+    assert result[0].name == customer.name
+    assert result[0].address == customer.address
+    assert result[0].route.code == route.code
+    assert result[0].id is not None
 
 
-def test_product_repository_get_by_code(session, product) -> None:
-    session.add(ProductModel(code=product.code, description=product.description))
-    session.commit()
-
-    result = SqlAlchemyProductRepository(session).get_by_code(product.code)
-
-    assert result is not None
-    assert result.code == product.code
-    assert result.description == product.description
+def test_customer_repository_get_by_name_missing(session) -> None:
+    assert SqlAlchemyCustomerRepository(session).get_by_name("INEXISTENTE") == ()
 
 
 def test_order_repository_save_persists_aggregate(session, order, seeded_catalog) -> None:
@@ -78,26 +85,26 @@ def test_order_repository_save_persists_aggregate(session, order, seeded_catalog
     assert saved.id is not None
     assert saved.order_number == order.order_number
     assert saved.status == order.status
-    assert saved.customer.code == order.customer.code
+    assert saved.customer.name == order.customer.name
+    assert saved.customer.address == order.customer.address
     assert saved.customer.route.code == order.customer.route.code
     assert saved.delivery_date == order.delivery_date
     assert len(saved.items) == 1
     assert saved.items[0].quantity == order.items[0].quantity
     assert isinstance(saved.items[0].quantity, int)
-    assert saved.items[0].product.code == order.items[0].product.code
+    assert saved.items[0].description == order.items[0].description
+    assert saved.items[0].pdf_code == order.items[0].pdf_code
 
 
 def test_order_repository_save_requires_existing_references(session, order) -> None:
     assert session.scalar(select(func.count()).select_from(RouteModel)) == 0
     assert session.scalar(select(func.count()).select_from(CustomerModel)) == 0
-    assert session.scalar(select(func.count()).select_from(ProductModel)) == 0
 
     with pytest.raises(CatalogReferenceNotFoundError):
         SqlAlchemyOrderRepository(session).save(order)
 
     assert session.scalar(select(func.count()).select_from(RouteModel)) == 0
     assert session.scalar(select(func.count()).select_from(CustomerModel)) == 0
-    assert session.scalar(select(func.count()).select_from(ProductModel)) == 0
     assert session.scalar(select(func.count()).select_from(OrderModel)) == 0
 
 
@@ -131,7 +138,7 @@ def test_order_repository_save_reuses_existing_references(session, order, seeded
 
     assert session.scalar(select(func.count()).select_from(RouteModel)) == 1
     assert session.scalar(select(func.count()).select_from(CustomerModel)) == 1
-    assert session.scalar(select(func.count()).select_from(ProductModel)) == 1
+    assert session.scalar(select(func.count()).select_from(OrderItemModel)) == 1
     assert session.scalar(select(func.count()).select_from(OrderModel)) == 1
 
 
@@ -142,8 +149,8 @@ def test_order_repository_get_by_number(session, order, seeded_catalog) -> None:
 
     assert result is not None
     assert result.order_number == order.order_number
-    assert result.customer.code == order.customer.code
-    assert result.items[0].product.code == order.items[0].product.code
+    assert result.customer.name == order.customer.name
+    assert result.items[0].description == order.items[0].description
 
 
 def test_order_repository_get_by_number_missing(session) -> None:
@@ -188,7 +195,7 @@ def _history_record(**overrides) -> ProcessingHistoryRecord:
         reasons=("ok",),
         order_number="4000326758",
         parser_id="mercadal_parser",
-        customer_code="CL000004-101",
+        customer_code="131242172",
         customer_name="MERCADAL GUARICANO",
         route_code="PPN006",
         route_name="Ruta 6",

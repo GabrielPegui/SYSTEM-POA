@@ -5,13 +5,11 @@ Includes repository contracts (ADR-001, ADR-003) and the PDF parser strategy
 """
 
 from app.domain.interfaces.customer_matching import CustomerMatcher
-from app.domain.interfaces.matching import ProductMatcher
 from app.domain.interfaces.pdf_parsers import IPDFParser
 from app.domain.interfaces.repositories import (
     CustomerRepository,
     OrderRepository,
     ProcessingHistoryRepository,
-    ProductRepository,
     RouteRepository,
 )
 
@@ -21,7 +19,5 @@ __all__ = [
     "IPDFParser",
     "OrderRepository",
     "ProcessingHistoryRepository",
-    "ProductMatcher",
-    "ProductRepository",
     "RouteRepository",
 ]

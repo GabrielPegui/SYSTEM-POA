@@ -4,8 +4,9 @@ The API layer translates use-case and domain failures into consistent HTTP
 status codes (Sprint 4):
 
 - ``OrderNotFoundError`` -> 404 (the resource in the path does not exist).
-- ``CustomerNotFoundError`` / ``RouteNotFoundError`` / ``ProductNotFoundError``
-  -> 404 (a referenced entity does not exist).
+- ``CustomerNotFoundError`` / ``RouteNotFoundError`` -> 404 (a referenced
+  entity does not exist).
+- ``AmbiguousCustomerError`` -> 409 (the name is not a unique reference).
 - ``InvalidOrderStatusTransitionError`` -> 409 (state conflict).
 - ``DomainValidationError`` -> 422 (unprocessable, invalid business input).
 - Unexpected exceptions -> 500 with a generic message (details are logged).
@@ -17,10 +18,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.application.errors import (
+    AmbiguousCustomerError,
     CustomerNotFoundError,
     InvalidOrderStatusTransitionError,
     OrderNotFoundError,
-    ProductNotFoundError,
     RouteNotFoundError,
 )
 from app.core.logging import get_logger
@@ -48,9 +49,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def route_not_found(_: Request, exc: RouteNotFoundError) -> JSONResponse:
         return _error_response(404, str(exc))
 
-    @app.exception_handler(ProductNotFoundError)
-    async def product_not_found(_: Request, exc: ProductNotFoundError) -> JSONResponse:
-        return _error_response(404, str(exc))
+    @app.exception_handler(AmbiguousCustomerError)
+    async def ambiguous_customer(_: Request, exc: AmbiguousCustomerError) -> JSONResponse:
+        return _error_response(409, str(exc))
 
     @app.exception_handler(InvalidOrderStatusTransitionError)
     async def invalid_transition(
